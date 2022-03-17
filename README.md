@@ -8,7 +8,7 @@ A command-line text editor, similar to editors like Vim, with features like synt
   - [ ] Insert/Remove Characters
   - [ ] Make the editor more useful
   - [ ] Save files to disk
-- [ ] Keypresses
+- [x] Keypresses
 - [ ] Status bar
 - [ ] Syntax Highlighting
 - [ ] Word finding
