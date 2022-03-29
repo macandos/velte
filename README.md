@@ -5,11 +5,11 @@ A command-line text editor, similar to editors like Vim, with features like synt
 
 ## Roadmap
 - [x] Open files
-  - [ ] Insert/Remove Characters
+  - [x] Insert/Remove Characters
   - [ ] Make the editor more useful
-  - [ ] Save files to disk
+  - [x] Save files to disk
 - [x] Keypresses
-- [ ] Status bar
+- [x] Status bar
 - [ ] Syntax Highlighting
 - [ ] Word finding
 - [ ] Auto-completion (*very* basic!)
