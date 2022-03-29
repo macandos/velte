@@ -16,7 +16,9 @@ void init(char* filename) {
     raw();
 
     // Open file
-    dinit = openFile(filename, dinit);
+    if (filename != NULL) {
+        openFile(filename, &dinit);
+    }
     
     // Show the display
     showDisplay(dinit); 

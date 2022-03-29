@@ -30,7 +30,7 @@ void raw() {
 
     // disable a bunch of flags
     rawS.c_lflag &= ~(ECHO | ISIG | IXON | ICANON | ICRNL | IEXTEN);
-    rawS.c_lflag &= ~(BRKINT | CS8 | INPCK | ISTRIP);
+    rawS.c_lflag &= ~(BRKINT | CS8 | INPCK | ISTRIP | IXOFF);
 
     rawS.c_cc[VMIN] = 0;
     rawS.c_cc[VTIME] = 1;

@@ -3,7 +3,8 @@
 
 #include "display.h"
 
-DisplayInit openFile(char* filename, DisplayInit dinit);
-void writeFile();
+void openFile(char* filename, DisplayInit *dinit);
+void createRow(char* text, int length, int pos, DisplayInit* dinit);
+void writeFile(DisplayInit* dinit);
 
 #endif
