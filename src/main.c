@@ -16,12 +16,10 @@ void init(char* filename) {
     raw();
 
     // Open file
-    if (filename != NULL) {
-        openFile(filename, &dinit);
-    }
+    openFile(filename, &dinit);
     
     // Show the display
-    showDisplay(dinit); 
+    showDisplay(&dinit); 
 }
 
 int main(int argc, char* argv[]) {
