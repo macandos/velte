@@ -6,7 +6,7 @@ A command-line text editor, similar to editors like Vim, with features like synt
 ## Roadmap
 - [x] Open files
   - [x] Insert/Remove Characters
-  - [ ] Make the editor more useful
+  - [x] Make the editor more useful
   - [x] Save files to disk
 - [x] Keypresses
 - [x] Status bar
