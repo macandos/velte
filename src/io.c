@@ -1,5 +1,7 @@
 #include "io.h"
 #include "display.h"
+#include "tabs.h"
+#include "keypresses.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -7,17 +9,33 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+/* append a string onto a line, replacing the old
+string in the array. */
+void changeStr(char* str, size_t length, int pos, DisplayInit* dinit) {
+    if (pos > dinit->linenum) return;
+
+    // allocate and append into the array
+    dinit->row[pos].line = malloc(length);
+    memcpy(dinit->row[pos].line, str, length);
+    dinit->row[pos].length = length;
+}
+
 // create new row with string as text
-void createRow(char* text, int length, int pos, DisplayInit* dinit) {
+void createRow(char* text, size_t length, int pos, DisplayInit* dinit) {
+    if (pos > dinit->linenum) return;
+
     // allocate space in the array
-    dinit->row = realloc(dinit->row, sizeof(DisplayInit) * (dinit->linenum + 1));
-    memmove(&dinit->row[pos], &dinit->row[pos - 1], sizeof(Row) * (dinit->linenum - pos));
+    dinit->row = realloc(dinit->row, sizeof(Row) * (dinit->linenum + 1));
+    memmove(&dinit->row[pos + 1], &dinit->row[pos], sizeof(Row) * (dinit->linenum - pos));
     dinit->row[pos].line = malloc(length + 1);
 
     memcpy(dinit->row[pos].line, text, length);
+    dinit->row[pos].line[length] = '\0';
     dinit->row[pos].length = length;
-    dinit->row[pos].line[length] = '\0'; 
 
+    dinit->row[pos].tabs.tab = NULL;
+    dinit->row[pos].tabs.tlen = 0;
+    tabChange(dinit, pos);
     dinit->linenum++;
 }
 
@@ -37,14 +55,21 @@ int handleUnwantedChars(const char* text, ssize_t length) {
 void openFile(char* filename, DisplayInit *dinit) {
     FILE* file;
     file = fopen(filename, "r");
-    if (!file) return; // don't do anything else
 
     dinit->linenum = 0;
     char* line = NULL;
     dinit->row = NULL;
+
+    /* do something if the file does not exist;
+    e.g. create a new one */
+    if (!file) {
+        createRow(" " , 1, dinit->linenum, dinit);
+        dinit->filename = NULL;
+        return;
+    }
+
     size_t len = 0;
     ssize_t read;
-
     while ((read = getline(&line, &len, file)) != -1) {
         while (handleUnwantedChars(line, read) == 0) line[read - 1] = ' ';
         createRow(line, read, dinit->linenum, dinit);
@@ -59,7 +84,11 @@ void openFile(char* filename, DisplayInit *dinit) {
 }
 
 // save file to disk
-void writeFile(DisplayInit* dinit) {
+void writeFile(DisplayInit* dinit, App* a) {
+    if (!dinit->filename) {
+        dinit->filename = systemScanfUser(a, "Save as... \0", dinit);
+    }
+
     // append all the rows to a string
     int length = 0;
     
@@ -85,4 +114,4 @@ void writeFile(DisplayInit* dinit) {
     write(fd, totalStr, length);
     close(fd);
     free(totalStr);
-}
+} 

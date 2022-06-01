@@ -5,26 +5,32 @@
  
 typedef struct { 
     // sees what pos the cursor is on 
-    int cursorX; 
+    int cursorX;
+    int offsetX;
+    int tabX;
     int cursorY; 
- 
-    // for scrolling purposes 
-    int scrollY; 
 } Dimensions; 
+
+typedef struct {
+    char* tab;
+    int tlen;
+} TabsInit;
  
 typedef struct { 
     char* string; 
     int length; 
 } App; 
- 
+
 typedef struct { 
     int length; 
-    char* line; 
+    char* line;
+
+    // tabs
+    TabsInit tabs;
 } Row; 
  
 typedef struct { 
-    int linenum; 
-    int numbersize; 
+    int linenum;  
     Row* row; 
  
     // cursor pos 
@@ -51,10 +57,12 @@ void showDisplay(DisplayInit* dinit);
 void bufferDisplay(DisplayInit* dinit);
 void lineNumShow(App* a, DisplayInit* dinit); 
 void app(int length, char* string, App* a);  
-void displayKeys(DisplayInit* dinit); 
+char displayKeys(); 
 void pos(int x, int y, App* a);
 void systemShowMessage(App* a, char msg[], DisplayInit* dinit); 
 void getWindowSize(DisplayInit* dinit); 
-void drawStatusBar(App* a, DisplayInit* dinit); 
+void drawStatusBar(App* a, DisplayInit* dinit);
+char *systemScanfUser(App* a, char msg[], DisplayInit* dinit);
+
  
-#endif /* DISPLAY_H_ */
+#endif
