@@ -196,7 +196,6 @@ void processKeypresses(char character, DisplayInit *dinit, App* a) {
                 break;
             case ARROW_RIGHT:
                 cursorMovementTab(dinit, character);
-                dinit->d.cursorX++;
                 if (dinit->d.cursorX > row->tabs.tlen + 5 && dinit->d.cursorY == dinit->linenum)
                     dinit->d.cursorX = row->tabs.tlen + 5; 
                 checkCursor(dinit, ARROW_RIGHT);
