@@ -8,7 +8,8 @@ typedef struct {
     int cursorX;
     int offsetX;
     int tabX;
-    int cursorY; 
+    int cursorY;
+    int calculateLengthStop;
 } Dimensions; 
 
 typedef struct {
@@ -50,8 +51,6 @@ typedef struct {
     char msg[64];
 } DisplayInit; 
  
-#define APP_INIT {NULL, 0} 
- 
 void clearDisplay(App* a); 
 void showDisplay(DisplayInit* dinit); 
 void bufferDisplay(DisplayInit* dinit);
@@ -59,10 +58,10 @@ void lineNumShow(App* a, DisplayInit* dinit);
 void app(int length, char* string, App* a);  
 char displayKeys(); 
 void pos(int x, int y, App* a);
-void systemShowMessage(App* a, char msg[], DisplayInit* dinit); 
+void systemShowMessage(App* a, DisplayInit* dinit); 
 void getWindowSize(DisplayInit* dinit); 
 void drawStatusBar(App* a, DisplayInit* dinit);
-char *systemScanfUser(App* a, char msg[], DisplayInit* dinit);
+char *systemScanfUser(DisplayInit* dinit);
 
  
 #endif

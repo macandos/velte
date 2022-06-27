@@ -4,6 +4,8 @@
 
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <string.h>
 
 // check if the current char in a line is a tab
 int isTab(DisplayInit* dinit, int pos, int y) {
@@ -31,7 +33,7 @@ void tabChange(DisplayInit* dinit, int pos) {
     int tabcount = getTabCount(dinit, pos);
 
     // malloc space for the tab space, tablength is 4
-    row->tabs.tab = malloc(row->length + (tabcount * 3) + 1);
+    row->tabs.tab = (char*)malloc(row->length + (tabcount * 3) + 1);
     for (int i = 0; i < row->length; i++) {
         // loop through everything; and append a certain amount of spaces
         // if the current char is a tab
@@ -51,51 +53,59 @@ void tabChange(DisplayInit* dinit, int pos) {
 }
 
 void controlOffsetX(DisplayInit* dinit) {
+    int tabOffset = dinit->d.cursorX - dinit->d.offsetX;
     Row* row = &dinit->row[dinit->d.cursorY - 1];
     dinit->d.offsetX = 0;
     int temp = 6;
     for (int i = 0; i < row->length; i++) {
-        if (temp == dinit->d.cursorX) break;
+        if (i == tabOffset - 5) break;
         if (isTab(dinit, i, dinit->d.cursorY - 1) == 0) {
-            do {
+            temp++;
+            while ((temp - 6) % 4 != 0) {
+                if (i == tabOffset - 6) break;
                 temp++;
                 dinit->d.offsetX++;
             }
-            while ((temp - 6) % 4 != 0);
-            dinit->d.offsetX--;
-            continue;
         }
-        temp++;
+        else temp++;
     }
     dinit->d.cursorX = temp - 1;
 }
 
-// control user movement through tabs
+// control cursor movement through tabs
 void cursorMovementTab(DisplayInit* dinit, char c) {
     Row* row = &dinit->row[dinit->d.cursorY - 1];
-    if (isTab(dinit, dinit->d.tabX - 7, dinit->d.cursorY - 1) == 1) {
-        c == ARROW_LEFT ? dinit->d.cursorX-- : dinit->d.cursorX++;
-        return;
+    switch (c) {
+        case ARROW_LEFT: {
+            dinit->d.calculateLengthStop++;
+            if (isTab(dinit, dinit->d.tabX - 7, dinit->d.cursorY - 1) == 1) {
+                dinit->d.cursorX--;
+                return;
+            }
+            break;
+        }
+        case ARROW_RIGHT:
+            dinit->d.calculateLengthStop--;
+            dinit->d.cursorX++;
+            if (isTab(dinit, dinit->d.tabX - 6, dinit->d.cursorY - 1) == 1) {
+                return;
+            }
+            break;
     }
-
-    // switch (c) {
-    //     case ARROW_LEFT:
-    //         do {
-    //             dinit->d.cursorX--;
-    //             dinit->d.offsetX--;
-    //             if (dinit->d.cursorX <= 6) break;
-    //             if (isgraph(row->line[dinit->d.cursorX - 7])) break;
-    //         }
-    //         while ((dinit->d.cursorX - 6) % 4 != 0);
-    //         dinit->d.offsetX++;
-    //         break;
-    //     case ARROW_RIGHT:
-    //         for (int i = 0; i < 4; i++) {
-    //             dinit->d.cursorX++;
-    //             dinit->d.offsetX++;
-    //             if ((dinit->d.cursorX - 6) % 4 == 0) break;
-    //         }
-    //         dinit->d.offsetX--;
-    //         break;
-    // }
+    /*
+        we use the calculateLengthStop variable to sum up all the length before the cursor
+        the variable moves accordingly to when the user inputs ARROW_LEFT, or ARROW_RIGHT.
+    */
+    dinit->d.offsetX = 0;
+    dinit->d.cursorX = 6;
+    for (int i = 0; i < row->length - dinit->d.calculateLengthStop; i++) {
+        if (isTab(dinit, i, dinit->d.cursorY - 1) == 0) {
+            dinit->d.cursorX++;
+            while ((dinit->d.cursorX - 6) % 4 != 0) {
+                dinit->d.cursorX++;
+                dinit->d.offsetX++;
+            }
+        }
+        else dinit->d.cursorX++;
+    }
 }

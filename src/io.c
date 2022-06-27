@@ -75,7 +75,7 @@ void openFile(char* filename, DisplayInit *dinit) {
         createRow(line, read, dinit->linenum, dinit);
     }
  
-    dinit->row[dinit->linenum - 1].length++;
+    //dinit->row[dinit->linenum - 1].length++;
     dinit->filename = filename;
 
     // free stuff
@@ -84,9 +84,9 @@ void openFile(char* filename, DisplayInit *dinit) {
 }
 
 // save file to disk
-void writeFile(DisplayInit* dinit, App* a) {
+void writeFile(DisplayInit* dinit) {
     if (!dinit->filename) {
-        dinit->filename = systemScanfUser(a, "Save as... \0", dinit);
+        // TODO
     }
 
     // append all the rows to a string

@@ -10,7 +10,7 @@ typedef enum {
     ARROW_LEFT = 4
 } arrowKeys;
 
-void processKeypresses(char character, DisplayInit *dinit, App* a);
+void processKeypresses(char character, DisplayInit *dinit);
 void appChar(DisplayInit* dinit, int pos, char character);
 void checkCursor(DisplayInit* dinit, char c);
 void delChar(DisplayInit* dinit, int pos);

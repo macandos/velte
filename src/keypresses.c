@@ -37,6 +37,7 @@ void checkCursor(DisplayInit* dinit, char c) {
     if (dinit->d.cursorX < 6) {
         if (dinit->d.cursorY == 1) {
             dinit->d.cursorX++;
+            dinit->d.calculateLengthStop--;
             return;
         }
         dinit->d.cursorY--;
@@ -63,7 +64,7 @@ void checkCursor(DisplayInit* dinit, char c) {
             if (c == ARROW_UP) row = &dinit->row[dinit->d.cursorY];
             else row = &dinit->row[dinit->d.cursorY - 2];
 
-            dinit->d.cursorX = row->tabs.tlen + 5;
+            dinit->d.cursorX = row->tabs.tlen + 6;
             c == ARROW_UP ? dinit->d.cursorY++ : dinit->d.cursorY--;
         }
     }
@@ -92,24 +93,28 @@ void deleteChar(DisplayInit* dinit) {
 
     if (dinit->d.cursorX > 6) {
         if (isTab(dinit, dinit->d.tabX - 7, dinit->d.cursorY - 1) == 0) {
-            for (int i = 0; i < 3; i++) {
-                dinit->d.tabX = dinit->d.cursorX - dinit->d.offsetX;
-                if (isTab(dinit, dinit->d.cursorX - 6, dinit->d.cursorY - 1) == 0) break;
-                dinit->d.cursorX--;
-                dinit->d.offsetX--;
-            }
             delChar(dinit, dinit->d.tabX - 7);
+            tabChange(dinit, dinit->d.cursorY - 1);
+            controlOffsetX(dinit);
+
+            // checks if the cursor has moved off-position, and moves it back
+            if (dinit->d.cursorX >= row->tabs.tlen + 6) {
+                dinit->d.cursorX--;
+            }
         }
         else delChar(dinit, dinit->d.tabX - 7);
+        tabChange(dinit, dinit->d.cursorY - 1);
     }
     else {
-        int y = dinit->d.cursorY - 1;
-        if (y == 0) return;
-
-        dinit->d.cursorX = dinit->row[y - 1].tabs.tlen + 5;
-        appendLine(&dinit->row[y - 1], row->line, row->length);
-        removeLine(y, dinit);
+        if (dinit->d.cursorY == 1) return;
         dinit->d.cursorY--;
+        int y = dinit->d.cursorY - 1;
+        dinit->d.cursorX = dinit->row[y].tabs.tlen + 5;
+        controlOffsetX(dinit);
+
+        appendLine(&dinit->row[y], row->line, row->length);
+        removeLine(y + 1, dinit);
+        tabChange(dinit, dinit->d.cursorY - 1);
     }
 }
 
@@ -131,7 +136,7 @@ void handleEnter(DisplayInit* dinit) {
     dinit->d.offsetX = 0;
 }
 
-void processKeypresses(char character, DisplayInit *dinit, App* a) {
+void processKeypresses(char character, DisplayInit *dinit) {
     Row* row = &dinit->row[dinit->d.cursorY - 1];
 
     // switch between all possible keypresses
@@ -143,9 +148,10 @@ void processKeypresses(char character, DisplayInit *dinit, App* a) {
                 errorHandle("exit");
                 break;
             case CTRL_KEY('u'):
-                writeFile(dinit, a);
-                if (dinit->modified == 1) 
-                    strncpy(dinit->msg, "Program saved successfully!\0", 28);
+                writeFile(dinit);
+                if (dinit->modified == 1) {
+                    memcpy(dinit->msg, "Program saved successfully!\0", 28);
+                }
                 dinit->modified = 0;
                 break;
             case CTRL_KEY('o'):
@@ -154,10 +160,6 @@ void processKeypresses(char character, DisplayInit *dinit, App* a) {
                 break;
             case CTRL_KEY('p'):
                 dinit->d.cursorX = row->tabs.tlen + 5;
-                break;
-            case '\t':
-                appChar(dinit, dinit->d.tabX - 6, character);
-                tabChange(dinit, dinit->d.cursorY - 1);
                 controlOffsetX(dinit);
                 break;
             // Enter
@@ -171,33 +173,28 @@ void processKeypresses(char character, DisplayInit *dinit, App* a) {
             // Backspacing
             case 127:
                 deleteChar(dinit);
-                tabChange(dinit, dinit->d.cursorY - 1);
                 dinit->modified = 1;
                 break;
             // arrow keys
             case ARROW_DOWN:
                 if (dinit->d.cursorY >= dinit->linenum) break;
             case ARROW_UP:
+                if (dinit->d.cursorY == 1 && character == ARROW_UP) break;
                 if (dinit->d.cursorX < row->tabs.tlen + 5) {
-                    if (character == ARROW_UP) {
-                        if (dinit->d.cursorY == 1) break;
-                        dinit->d.cursorY--;
-                    }
-                    else {
-                        dinit->d.cursorY++;
-                    }
+                    if (character == ARROW_UP) dinit->d.cursorY--;
+                    else dinit->d.cursorY++;
 
-                    if (dinit->row[dinit->d.cursorY - 1].tabs.tlen + 5 
-                    == dinit->d.cursorX) {
+                    if (dinit->row[dinit->d.cursorY - 1].tabs.tlen + 5 == dinit->d.cursorX) 
                         break;
-                    }
                 }
                 checkCursor(dinit, character);
                 break;
             case ARROW_RIGHT:
                 cursorMovementTab(dinit, character);
-                if (dinit->d.cursorX > row->tabs.tlen + 5 && dinit->d.cursorY == dinit->linenum)
+                if (dinit->d.cursorX > row->tabs.tlen + 5 && dinit->d.cursorY == dinit->linenum) {
                     dinit->d.cursorX = row->tabs.tlen + 5; 
+                    dinit->d.calculateLengthStop = 1;
+                }
                 checkCursor(dinit, ARROW_RIGHT);
                 break;
             case ARROW_LEFT:
@@ -207,6 +204,7 @@ void processKeypresses(char character, DisplayInit *dinit, App* a) {
             default:
                 appChar(dinit, dinit->d.tabX - 6, character);
                 tabChange(dinit, dinit->d.cursorY - 1);
+                controlOffsetX(dinit);
                 dinit->modified = 1;
                 break;
         }
