@@ -10,42 +10,33 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 #include <fcntl.h>
+#include <stdarg.h>
 
-#define MSG_WAIT_TIMES 30
+#define MSG_WAIT_TIMES 5
 
 // draw the status bar
 void drawStatusBar(App* a, DisplayInit* dinit) {
+    pos(0, dinit->height, a);
     processBG(a, DARK_GREY);
     processFG(a, WHITE);
     
     app(18, "Velte Text Editor, ", a);
-    char dis[40];
-
-    // display the current line and char
-    char c = dinit->row[dinit->d.cursorY - 1].line[dinit->d.cursorX - 6];
-    if (!iscntrl(c)) snprintf(dis, sizeof(dis), "Char: %c - Line: %d", c, dinit->d.cursorY);
-    else if (c == '\t') snprintf(dis, sizeof(dis), "Char: Tab");
-    else snprintf(dis, sizeof(dis), "Char: %c - Line: %d", ' ', dinit->d.cursorY);
 
     // append the filaneme; if any
     // if its null, then just say 'Untitled'
     char fn[64];
-    if (dinit->filename != NULL) snprintf(fn, sizeof(fn), "Editing %s, x = %d", dinit->filename, dinit->d.cursorX - 6);
+    if (dinit->filename != NULL) snprintf(fn, sizeof(fn), "Editing %s, x = %d", dinit->filename, dinit->d.cursorX);
     else snprintf(fn, sizeof(fn), "Editing Untitled, x = %d", dinit->d.cursorX - 6);
-    // if (dinit->modified > 0) {
-    //     strncat(fn, " (modified)", strlen(fn) + 11);
-    // }
+    if (dinit->modified > 0) {
+        strncat(fn, " (modified)", strlen(fn) + 11);
+    }
     for (int i = 0; i < dinit->height; i++) {
         if (i == 20) {
             pos(i, dinit->height, a);
             app(strlen(fn), fn, a);
-        }
-        else if (i == dinit->height - strlen(dis)) {
-            pos(i, dinit->height, a);
-            app(strlen(dis), dis, a);
-            break;
         }
         else {
             app(1, " ", a);
@@ -122,32 +113,75 @@ void app(int length, char* string, App* a) {
 }
 
 // display a message to the user
-void systemShowMessage(App* a, DisplayInit* dinit) {
-    static int wait = MSG_WAIT_TIMES;
-    if (wait > 0 && dinit->msg[0] != '\0') {
+void systemShowMessage(DisplayInit* dinit, App* a) {
+    if (time(NULL) <= dinit->m.length + MSG_WAIT_TIMES) {
         pos(0, dinit->width - 2, a);
+        app(strlen(dinit->m.msg), dinit->m.msg, a);
+    }
+    else {
+        memset(dinit->m.msg, 0, strlen(dinit->m.msg));
+    }
+}
 
-        for (int i = 0; i < dinit->height; i++) {
-            if (i == (dinit->height / 2) - strlen(dinit->msg)) {
-                app(strlen(dinit->msg), dinit->msg, a);
-            }
-            app(1, " ", a);
+// allow the user to input certain things
+char *systemScanfUser(DisplayInit* dinit, char* msg) {
+    char* strmsg = NULL;
+    char* screenMsg = NULL;
+    int len = 1;
+    strmsg = malloc(len);
+    strmsg[0] = '\0';
+
+    // store current positions
+    int x = dinit->d.cursorX;
+    int y = dinit->d.cursorY;
+
+    while (1) {
+        screenMsg = malloc(strlen(msg) + len + 17); // 17 is the size of the first string
+        snprintf(screenMsg, strlen(msg) + len + 17, "Ctrl+C: Cancel | %s%s", msg, strmsg);
+        setDinitMsg(dinit, screenMsg, strlen(screenMsg));
+        dinit->d.cursorX = x;
+        dinit->d.cursorY = y;
+
+        char c = displayKeys();
+        if (c == '\n' || c == '\r') {
+            return strmsg;
         }
-        wait--;
+        else if (c == CTRL_KEY('c')) {
+            return 0;
+        }
+        else if (c == 127) { // 127 is backspace
+            if (len > 1) {
+                strmsg[len - 1] = '\0';
+                len--;
+            }
+        }
+        if (!iscntrl(c)) {
+            strmsg = realloc(strmsg, len + 1);
+            strmsg[len - 1] = c;
+            strmsg[len] = '\0';
+            len++;
+        }
+        dinit->d.cursorX = strlen(screenMsg) + 1;
+        dinit->d.cursorY = dinit->width - 2;
+        bufferDisplay(dinit);
     }
-    else if (wait == 0) {
-        memset(dinit->msg, 0, strlen(dinit->msg));
-        wait = MSG_WAIT_TIMES;
-    }
+}
+
+// set the display message to anything we want
+void setDinitMsg(DisplayInit* dinit, char* msg, int length) {
+    dinit->m.msg = malloc(length + 1);
+    memcpy(dinit->m.msg, msg, length);
+    dinit->m.msg[length] = '\0';
+    dinit->m.length = time(NULL);
 }
 
 // show linenumbers on the screen
 void lineNumShow(App* a, DisplayInit* dinit) {    
     // disable line wrapping
     app(5, "\033[?7l", a);
-    int showLine = 1;
+    int showLine = 1 + dinit->d.scrollY;
 
-    while (showLine < dinit->height - 1) {
+    while (showLine - dinit->d.scrollY < dinit->width - 1) {
         Row* row = &dinit->row[showLine - 1];
         // display the linenum
         char Num[32];
@@ -159,20 +193,20 @@ void lineNumShow(App* a, DisplayInit* dinit) {
             lighter grey, unless if the cursor is on the line
         */
         processBG(a, DARKER_GREY);
-        if (dinit->d.cursorY == showLine) processFG(a, WHITE);
+        if (dinit->d.cursorY + dinit->d.scrollY == showLine) processFG(a, WHITE);
         else processFG(a, LIGHTER_GREY);
 
         // make sure its on the right side of the linenum
-        pos(0, showLine, a);
+        pos(0, showLine - dinit->d.scrollY, a);
             
         for (int y = 0; y < (6 - (strlen(Num)) - 1); y++) {
             app(1, " ", a);
         }
 
         if (showLine <= dinit->linenum) {
-            pos((6 - (strlen(Num)) - 1), showLine, a);
+            pos((6 - (strlen(Num)) - 1), showLine - dinit->d.scrollY, a);
             app(strlen(Num), Num, a);
-            pos(5, showLine, a);
+            pos(5, showLine - dinit->d.scrollY, a);
             app(1, " ", a);
             processFG(a, WHITE);
 
@@ -184,7 +218,6 @@ void lineNumShow(App* a, DisplayInit* dinit) {
         showLine++;
         app(3, "\x1b[K", a);
     }
-
     reset(a);
 }
 
@@ -197,11 +230,10 @@ void bufferDisplay(DisplayInit* dinit) {
     // show lines
     lineNumShow(&a, dinit);
 
-    //show the display message to the user
-    systemShowMessage(&a, dinit);
+    // show mesage
+    systemShowMessage(dinit, &a);
 
     // show status bar
-    pos(0, dinit->height, &a);
     drawStatusBar(&a, dinit);
     
     // write everything to the terminal
@@ -214,15 +246,17 @@ void showDisplay(DisplayInit* dinit) {
     dinit->d.cursorX = 6;
     dinit->d.cursorY = 1;
     dinit->d.offsetX = 0;
-    dinit->d.calculateLengthStop = 1;
+    dinit->d.calculateLengthStop = dinit->row[0].length;
     dinit->modified = 0;
-    dinit->msg[0] = '\0';
+    dinit->d.scrollX = 0;
+    dinit->d.scrollY = 0;
+    setDinitMsg(dinit, "", 0);
     getWindowSize(dinit);
 
     while (1) {
         bufferDisplay(dinit);
         
         // get and process the keypresses
-       processKeypresses(displayKeys(), dinit);
+        processKeypresses(displayKeys(), dinit);
     }
 }

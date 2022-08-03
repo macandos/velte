@@ -74,8 +74,6 @@ void openFile(char* filename, DisplayInit *dinit) {
         while (handleUnwantedChars(line, read) == 0) line[read - 1] = ' ';
         createRow(line, read, dinit->linenum, dinit);
     }
- 
-    //dinit->row[dinit->linenum - 1].length++;
     dinit->filename = filename;
 
     // free stuff
@@ -86,7 +84,12 @@ void openFile(char* filename, DisplayInit *dinit) {
 // save file to disk
 void writeFile(DisplayInit* dinit) {
     if (!dinit->filename) {
-        // TODO
+        dinit->filename = systemScanfUser(dinit, "Save as: \0");
+        if (dinit->filename == 0) {
+            setDinitMsg(dinit, "", 0);
+            return;
+        }
+        setDinitMsg(dinit, "Program saved!", 14);
     }
 
     // append all the rows to a string
@@ -97,14 +100,13 @@ void writeFile(DisplayInit* dinit) {
         length += dinit->row[i].length;
 
     char* totalStr = malloc(length);
-    char* buff = totalStr;
+    int strlen = 0;
     for (int i = 0; i < dinit->linenum; i++) {
-        memcpy(buff, dinit->row[i].line, dinit->row[i].length);
+        memcpy(&totalStr[strlen], dinit->row[i].line, dinit->row[i].length);
 
-        buff[dinit->row[i].length - 1] = '\0';
-        buff += dinit->row[i].length - 1;
-        *buff = '\n';
-        buff++;
+        strlen += dinit->row[i].length - 1;
+        totalStr[strlen] = '\n';
+        strlen++;
     }
 
     // open the file and append all contents

@@ -10,13 +10,22 @@ typedef struct {
     int tabX;
     int cursorY;
     int calculateLengthStop;
+
+    // scrolling
+    int scrollX;
+    int scrollY;
 } Dimensions; 
 
 typedef struct {
     char* tab;
     int tlen;
 } TabsInit;
- 
+
+typedef struct {
+    char* msg;
+    int length;
+} MsgInit;
+
 typedef struct { 
     char* string; 
     int length; 
@@ -45,10 +54,10 @@ typedef struct {
     char* filename; 
  
     // check if the file was modified or not 
-    int modified; 
+    int modified;
 
-    // display a status message
-    char msg[64];
+    // display status message
+    MsgInit m;
 } DisplayInit; 
  
 void clearDisplay(App* a); 
@@ -58,10 +67,11 @@ void lineNumShow(App* a, DisplayInit* dinit);
 void app(int length, char* string, App* a);  
 char displayKeys(); 
 void pos(int x, int y, App* a);
-void systemShowMessage(App* a, DisplayInit* dinit); 
+void systemShowMessage(DisplayInit* dinit, App* a); 
 void getWindowSize(DisplayInit* dinit); 
 void drawStatusBar(App* a, DisplayInit* dinit);
-char *systemScanfUser(DisplayInit* dinit);
+char *systemScanfUser(DisplayInit* dinit, char* msg);
+void setDinitMsg(DisplayInit* dinit, char* msg, int length);
 
  
 #endif

@@ -3,6 +3,9 @@
 
 #include "display.h"
 
+// so we can process CTRL + (SOME KEY)
+#define CTRL_KEY(k) ((k) & 0x1f)
+
 typedef enum {
     ARROW_UP = 1,
     ARROW_DOWN = 2,
@@ -17,5 +20,6 @@ void delChar(DisplayInit* dinit, int pos);
 void appendLine(Row* row, char* s, size_t len);
 void removeLine(int pos, DisplayInit* dinit);
 void deleteChar(DisplayInit* dinit);
+void scroll(DisplayInit* dinit);
 
 #endif /* KEYPRESSES_H_ */
