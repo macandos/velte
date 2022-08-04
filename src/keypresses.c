@@ -66,7 +66,7 @@ void checkCursor(DisplayInit* dinit, char c) {
             if (c == ARROW_UP) row = &dinit->row[scrollOffset + 1];
             else row = &dinit->row[scrollOffset - 1];
 
-            dinit->d.cursorX = row->tabs.tlen + 5;
+            dinit->d.cursorX = row->tabs.tlen + 5 + dinit->d.offsetX;
             c == ARROW_UP ? dinit->d.cursorY++ : dinit->d.cursorY--;
         }
     }
