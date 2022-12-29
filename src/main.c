@@ -2,24 +2,32 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <string.h>
+#include <langinfo.h>
 #include <stdlib.h>
+#include <locale.h>
+#include <stdint.h>
 
 #include "raw.h"
 #include "error.h"
 #include "display.h"
 #include "io.h"
+#include "keypresses.h"
+#include "uchar.h"
+
 
 void init(char* filename) {
-    DisplayInit dinit;
+    Editor editor;
 
-    // Enter Raw mode
     raw();
+    if (strcmp(nl_langinfo(CODESET), "UTF-8") == 0) {
+        editor.config.isUtf8 = 1;
+    }
+    setlocale(LC_CTYPE, "");
+    getWindowSize(&editor);
 
-    // Open file
-    openFile(filename, &dinit);
-    
-    // Show the display
-    showDisplay(&dinit); 
+    initConfig(&editor);
+    openFile(filename, &editor);
+    showDisplay(&editor);
 }
 
 int main(int argc, char* argv[]) {
