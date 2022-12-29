@@ -1,77 +1,29 @@
 #ifndef DISPLAY_H_
 #define DISPLAY_H_ 
- 
-#include <sys/types.h> 
- 
-typedef struct { 
-    // sees what pos the cursor is on 
-    int cursorX;
-    int offsetX;
-    int tabX;
-    int cursorY;
-    int calculateLengthStop;
 
-    // scrolling
-    int scrollX;
-    int scrollY;
-} Dimensions; 
+#include <stdint.h>
+#include <stdarg.h>
 
-typedef struct {
-    char* tab;
-    int tlen;
-} TabsInit;
+#include "structs.h"
 
-typedef struct {
-    char* msg;
-    int length;
-} MsgInit;
-
-typedef struct { 
-    char* string; 
-    int length; 
-} App; 
-
-typedef struct { 
-    int length; 
-    char* line;
-
-    // tabs
-    TabsInit tabs;
-} Row; 
- 
-typedef struct { 
-    int linenum;  
-    Row* row; 
- 
-    // cursor pos 
-    Dimensions d; 
- 
-    // terminal size 
-    int width; 
-    int height; 
- 
-    // get filename 
-    char* filename; 
- 
-    // check if the file was modified or not 
-    int modified;
-
-    // display status message
-    MsgInit m;
-} DisplayInit; 
- 
+int displayDraw(App* a, const char* format, ...);
+void writeToAppendBuffer(size_t fLen, char* formattedString, App* a);
+void writeDisplay(App* a);
 void clearDisplay(App* a); 
-void showDisplay(DisplayInit* dinit); 
-void bufferDisplay(DisplayInit* dinit);
-void lineNumShow(App* a, DisplayInit* dinit); 
-void app(int length, char* string, App* a);  
-char displayKeys(); 
-void pos(int x, int y, App* a);
-void systemShowMessage(DisplayInit* dinit, App* a); 
-void getWindowSize(DisplayInit* dinit); 
-void drawStatusBar(App* a, DisplayInit* dinit);
-char *systemScanfUser(DisplayInit* dinit, char* msg);
-void setDinitMsg(DisplayInit* dinit, char* msg, int length);
+void showDisplay(Editor* editor); 
+void bufferDisplay(Editor* editor);
+void lineNumShow(Editor* editor);
+int horizontalScrollOffset(size_t* returnLength, size_t by, size_t height, size_t length);
+void printScrollIndicators(Editor* editor, size_t spliceLen, int y);
+void controlKeypresses(Editor* editor);
+void pos(size_t x, int y, App* a);
+void systemShowMessage(Editor* editor); 
+void getWindowSize(Editor* editor); 
+void drawStatusBar(Editor* editor);
+char *editorPrompt(Editor* editor, char* msg);
+void seteditorMsg(Editor* editor, char* msg, size_t length);
+void initConfig(Editor* editor);
+void* check_malloc(size_t length);
+void* check_realloc(void* buff, size_t length);
 
- 
 #endif

@@ -2,7 +2,7 @@
 #include "error.h"
 #include "keypresses.h"
 #include "colour.h"
-#include "tabs.h"
+#include "uchar.h"
 
 #include <stdio.h>
 #include <ctype.h>
@@ -10,253 +10,337 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
 #include <string.h>
 #include <fcntl.h>
 #include <stdarg.h>
 
 #define MSG_WAIT_TIMES 5
+#define STARTING_VELTE_STR 9
 
 // draw the status bar
-void drawStatusBar(App* a, DisplayInit* dinit) {
-    pos(0, dinit->height, a);
-    processBG(a, DARK_GREY);
-    processFG(a, WHITE);
+void drawStatusBar(Editor* editor) {
+    pos(0, editor->width, &editor->a);
+    processBG(&editor->a, DARK_GREY);
+    processFG(&editor->a, WHITE);
     
-    app(18, "Velte Text Editor, ", a);
+    displayDraw(&editor->a, "Velte - ");
 
-    // append the filaneme; if any
-    // if its null, then just say 'Untitled'
-    char fn[64];
-    if (dinit->filename != NULL) snprintf(fn, sizeof(fn), "Editing %s, x = %d", dinit->filename, dinit->d.cursorX);
-    else snprintf(fn, sizeof(fn), "Editing Untitled, x = %d", dinit->d.cursorX - 6);
-    if (dinit->modified > 0) {
-        strncat(fn, " (modified)", strlen(fn) + 11);
-    }
-    for (int i = 0; i < dinit->height; i++) {
-        if (i == 20) {
-            pos(i, dinit->height, a);
-            app(strlen(fn), fn, a);
+    // append the filaneme; if any, and other information
+    for (int i = 0; i < editor->height; i++) {
+        if (i == STARTING_VELTE_STR) {
+            pos(i, editor->width, &editor->a);
+            if (editor->filename != NULL) {
+                writeToAppendBuffer(strlen(editor->filename), editor->filename, &editor->a);
+                pos(i + strlen(editor->filename) + 1, editor->width, &editor->a);
+            }
+            else displayDraw(&editor->a, "Untitled ");
+            displayDraw(&editor->a, "%d/%d ", 
+                        editor->c.cursorX,
+                        editor->c.cursorY);
+            if (editor->modified > 0) {
+                displayDraw(&editor->a, "(modified)");
+            }
         }
         else {
-            app(1, " ", a);
+            displayDraw(&editor->a, " ");
         }
     }
-    reset(a);
-    pos(dinit->d.cursorX, dinit->d.cursorY, a);
+    reset(&editor->a);
 }
 
 // get window size
-void getWindowSize(DisplayInit* dinit) {
+void getWindowSize(Editor* editor) {
     struct winsize w;
     int f = open("/dev/tty", O_RDWR);
 
-    if (f < 0 || ioctl(f, TIOCGWINSZ, &w) < 0) errorHandle("open");
-    dinit->width = w.ws_row + 1;
-    dinit->height = w.ws_col + 1;
+    if (f < 0 || ioctl(f, TIOCGWINSZ, &w) < 0) return;
+    editor->width = w.ws_row + 1;
+    editor->height = w.ws_col + 1;
 }
 
 // move the cursor to the required coordinates
-void pos(int x, int y, App* a) {
-    char retArr[64];
-    snprintf(retArr, sizeof(retArr), "\033[%d;%dH", (y), (x));
-    app(strlen(retArr), retArr, a);
+void pos(size_t x, int y, App* a) {
+    displayDraw(a, "\033[%d;%dH", (y), (x));
 }
 
-// displays the keys
-char displayKeys() {
-    char character = '\0';
-    if (read(STDIN_FILENO, &character, 1) == -1 && errno != EAGAIN)
-        exit(1);
-
-    if (character == '\033') {
-        char arrKey[3];
-        if (read(STDIN_FILENO, &arrKey[0], 1) != -1) character = '\033';
-        if (read(STDIN_FILENO, &arrKey[1], 1) != -1) character = '\033';
-
-        // checks for arrow keys, then sets the character to the
-        // appropiate one.
-        if (arrKey[0] == '[') {
-            switch (arrKey[1]) {
-                case 'A':
-                    character = ARROW_UP;
-                    break;
-                case 'B':
-                    character = ARROW_DOWN;
-                    break;
-                case 'C':
-                    character = ARROW_RIGHT;
-                    break;
-                case 'D':
-                    character = ARROW_LEFT;
-                    break;
-            }
-        }
-    }
-
-    return character;
+// control keypresses
+void controlKeypresses(Editor* editor) {
+    uint32_t c = getMKeys();
+    processKeypresses(c, editor);
 }
 
 // clear display
 void clearDisplay(App* a) {
-    app(2, "\033c", a);
+    displayDraw(a, "\033c");
 }
 
-// function to append messages
-void app(int length, char* string, App* a) {
-    char* newStr = realloc(a->string, a->length + length);
-    
-    if (newStr == NULL) return; // fail
-    memcpy(&newStr[a->length], string, length);
-    a->string = newStr;
-    a->length += length;
-}
-
-// display a message to the user
-void systemShowMessage(DisplayInit* dinit, App* a) {
-    if (time(NULL) <= dinit->m.length + MSG_WAIT_TIMES) {
-        pos(0, dinit->width - 2, a);
-        app(strlen(dinit->m.msg), dinit->m.msg, a);
+// malloc and check if it failed so we don't have to do this every time
+void* check_malloc(size_t length) {
+    void* tmp = malloc(length);
+    if (!tmp) {
+        errorHandle("Velte: malloc");
     }
-    else {
-        memset(dinit->m.msg, 0, strlen(dinit->m.msg));
-    }
+    return tmp;
 }
 
-// allow the user to input certain things
-char *systemScanfUser(DisplayInit* dinit, char* msg) {
-    char* strmsg = NULL;
-    char* screenMsg = NULL;
-    int len = 1;
-    strmsg = malloc(len);
-    strmsg[0] = '\0';
+void* check_realloc(void* buff, size_t length) {
+    void* tmp = realloc(buff, length);
+    if (!tmp) {
+        errorHandle("Velte: realloc");
+    }
+    return tmp;
+}
 
-    // store current positions
-    int x = dinit->d.cursorX;
-    int y = dinit->d.cursorY;
+void writeToAppendBuffer(size_t fLen, char* formattedString, App* a) {
+    a->string = check_realloc(a->string, a->length + fLen);
+    memcpy(&a->string[a->length], formattedString, fLen);
+    a->length += fLen;
+}
+
+// draw messages to the screen
+int displayDraw(App* a, const char* format, ...) {
+    va_list ap;
+    va_start(ap, format);
+
+    // get the length of the formatted string
+    int length = vsnprintf(NULL, 0, format, ap);
+    va_end(ap);
+
+    va_start(ap, format);
+    char* formattedString = check_malloc(length + 1);
+    size_t fLen = vsprintf(formattedString, format, ap);
+
+    writeToAppendBuffer(fLen, formattedString, a);
+
+    va_end(ap);
+    free(formattedString);
+    return fLen;
+}
+
+void writeDisplay(App* a) {
+    write(STDOUT_FILENO, a->string, a->length);
+    free(a->string);
+    a->length = 0;
+}
+
+// prompts the user to something
+char *editorPrompt(Editor* editor, char* msg) {
+    uint32_t* strmsg = NULL;
+    char* charMsg = NULL;
+    size_t len = 0;
+    size_t resultingLen;
+    editor->c.maskX = 0;
+
+    strmsg = check_malloc((len + 1) * sizeof(uint32_t));
+    strmsg[len] = '\0';
 
     while (1) {
-        screenMsg = malloc(strlen(msg) + len + 17); // 17 is the size of the first string
-        snprintf(screenMsg, strlen(msg) + len + 17, "Ctrl+C: Cancel | %s%s", msg, strmsg);
-        setDinitMsg(dinit, screenMsg, strlen(screenMsg));
-        dinit->d.cursorX = x;
-        dinit->d.cursorY = y;
+        editor->m.isStatus = 0;
+        clearDisplay(&editor->a);
+        getWindowSize(editor);
+        displayDraw(&editor->a, "\033[?7l");
 
-        char c = displayKeys();
-        if (c == '\n' || c == '\r') {
-            return strmsg;
-        }
-        else if (c == CTRL_KEY('c')) {
-            return 0;
-        }
-        else if (c == 127) { // 127 is backspace
-            if (len > 1) {
-                strmsg[len - 1] = '\0';
-                len--;
+        charMsg = utftomb(strmsg, len, &resultingLen);
+        editor->c.scrollX = horizontalScrollOffset(&resultingLen, editor->c.maskX, editor->height - 1, len + 1);
+
+        pos(0, editor->width - 2, &editor->a);
+        displayDraw(&editor->a, "Ctrl+X: Cancel - %s", msg);
+        pos(0, editor->width - 1, &editor->a);
+        writeToAppendBuffer(resultingLen, &charMsg[editor->c.scrollX], &editor->a);
+
+       if ((len + 1) >= (size_t)editor->height - 2) {
+            processBG(&editor->a, RED);
+            if (editor->c.maskX >= (size_t)editor->height - 2) {
+                pos(0, editor->width - 1, &editor->a);
+                displayDraw(&editor->a, "<");
+            }
+            if (resultingLen >= (size_t)editor->height - 2) {
+                pos(editor->height - 1, editor->width - 1, &editor->a);
+                displayDraw(&editor->a, ">");
             }
         }
-        if (!iscntrl(c)) {
-            strmsg = realloc(strmsg, len + 1);
-            strmsg[len - 1] = c;
-            strmsg[len] = '\0';
-            len++;
+        bufferDisplay(editor);
+        editor->m.isStatus = 1;
+
+        // get a keypress from the user
+        uint32_t c = getMKeys();
+        switch (c) {
+            case '\n':
+            case '\r':
+                // return the prompt entered
+                editor->c.maskX = editor->c.cursorX;
+                return charMsg;
+            case CTRL_KEY('x'):
+                editor->c.maskX = editor->c.cursorX;
+                return 0;
+            case BACKSPACE_KEY: {
+                if (editor->c.maskX > 0) {
+                    size_t prev = editor->c.maskX - 1;
+                    memmove(&strmsg[prev], &strmsg[prev + 1], (len - prev - 1) * sizeof(uint32_t));
+                    editor->c.maskX--;
+                    len--;
+                }
+                break;
+            }
+            case ARROW_LEFT:
+                if (editor->c.maskX > 0) editor->c.maskX--;
+                break;
+            case ARROW_RIGHT:
+                if (editor->c.maskX < len) editor->c.maskX++;
+                break;
+            default:
+                if (!iscntrl(c)) {
+                    strmsg = check_realloc(strmsg, (len + 2) * sizeof(uint32_t));
+                    memmove(&strmsg[editor->c.maskX + 1], &strmsg[editor->c.maskX], (len - editor->c.maskX) * sizeof(uint32_t));
+                    strmsg[editor->c.maskX] = c;
+                    editor->c.maskX++;
+                    len++;
+
+                    strmsg[len] = '\0';
+                }
+                break;
+
         }
-        dinit->d.cursorX = strlen(screenMsg) + 1;
-        dinit->d.cursorY = dinit->width - 2;
-        bufferDisplay(dinit);
     }
+
+    free(strmsg);
+    free(charMsg);
 }
 
 // set the display message to anything we want
-void setDinitMsg(DisplayInit* dinit, char* msg, int length) {
-    dinit->m.msg = malloc(length + 1);
-    memcpy(dinit->m.msg, msg, length);
-    dinit->m.msg[length] = '\0';
-    dinit->m.length = time(NULL);
+void seteditorMsg(Editor* editor, char* msg, size_t length) {
+    editor->m.msg = check_malloc(length + 1);
+    memcpy(editor->m.msg, msg, length);
+    editor->m.msg[length] = '\0';
+    editor->m.time = time(NULL);
+}
+
+// display a message to the user
+void systemShowMessage(Editor* editor) {
+    if (time(NULL) < editor->m.time + MSG_WAIT_TIMES) {
+        processFG(&editor->a, WHITE);
+        pos(0, editor->width - 2, &editor->a);
+        displayDraw(&editor->a, editor->m.msg);
+    }
+    else {
+        memset(editor->m.msg, 0, strlen(editor->m.msg));
+    }
+}
+
+/*  get a string and calculate how many times it goes past the height specfifed and returns
+    the amount of times it goes over times the height. it also returns the stirng length subracted the return value
+    so we can print that section of the string out onto the display
+*/
+int horizontalScrollOffset(size_t* returnLength, size_t by, size_t height, size_t length) {
+    if (by < 6) by = 7;
+    int scrollDiv = (by - 5) / (height - 6);
+    size_t scrollX = (height - 6) * scrollDiv;
+    if (returnLength) *returnLength = length - scrollX - 1;
+    return scrollX;
 }
 
 // show linenumbers on the screen
-void lineNumShow(App* a, DisplayInit* dinit) {    
-    // disable line wrapping
-    app(5, "\033[?7l", a);
-    int showLine = 1 + dinit->d.scrollY;
-
-    while (showLine - dinit->d.scrollY < dinit->width - 1) {
-        Row* row = &dinit->row[showLine - 1];
-        // display the linenum
-        char Num[32];
-        snprintf(Num, sizeof(Num), "%d", showLine);
-
+void lineNumShow(Editor* editor) {
+    // disable default line wrapping
+    displayDraw(&editor->a, "\033[?7l");
+    char Num[32];
+    int showLine = 1 + editor->c.scrollY;
+    Row* row = &editor->row[showLine - 1];
+    int yPos = 1;
+    
+    while (yPos < editor->width - 1) {
+        int showStrLen = snprintf(Num, sizeof(Num), "%d", showLine);
         /*
             we want the background to be dark grey
             additionally, we also want the foreground to be a 
             lighter grey, unless if the cursor is on the line
         */
-        processBG(a, DARKER_GREY);
-        if (dinit->d.cursorY + dinit->d.scrollY == showLine) processFG(a, WHITE);
-        else processFG(a, LIGHTER_GREY);
+        processBG(&editor->a, DARKER_GREY);
+        if (editor->c.cursorY + editor->c.scrollY == showLine)
+            processFG(&editor->a, WHITE);
+        else processFG(&editor->a, LIGHTER_GREY);
 
-        // make sure its on the right side of the linenum
-        pos(0, showLine - dinit->d.scrollY, a);
-            
-        for (int y = 0; y < (6 - (strlen(Num)) - 1); y++) {
-            app(1, " ", a);
-        }
-
-        if (showLine <= dinit->linenum) {
-            pos((6 - (strlen(Num)) - 1), showLine - dinit->d.scrollY, a);
-            app(strlen(Num), Num, a);
-            pos(5, showLine - dinit->d.scrollY, a);
-            app(1, " ", a);
-            processFG(a, WHITE);
+        if (showLine <= editor->linenum) {
+            // draw the line number to the screen
+            pos((editor->config.disLine - (showStrLen) - 1), yPos, &editor->a);
+            displayDraw(&editor->a, "%s ", Num);
+            processFG(&editor->a, WHITE);
 
             // append the text in
-            int length = row->tabs.tlen;
-            app(length, row->tabs.tab, a);
-        }
+            size_t spliceLen;
+            size_t scrollX;
+            if (row->tabs.tlen + editor->c.utfJump > (size_t)editor->height - editor->config.disLine - 1) {
+                scrollX = horizontalScrollOffset(&spliceLen, 
+                                                editor->c.cursorX + editor->c.utfJump, 
+                                                editor->height - editor->config.disLine - editor->c.utfJump, 
+                                                row->tabs.tlen);
+            }
+            else {
+                scrollX = 0;
+                spliceLen = row->tabs.tlen;
+            }
+            char* toStr = utftomb(&row->tabs.tab[scrollX - 1], spliceLen, &spliceLen);
+            writeToAppendBuffer(spliceLen, toStr, &editor->a);
+            free(toStr);
 
+            if (row->tabs.tlen + editor->c.utfJump > editor->height - editor->config.disLine - 1) {
+                processBG(&editor->a, RED);
+                if (editor->c.cursorX + editor->c.utfJump >= (size_t)editor->height - editor->config.disLine - 1) {
+                    pos(editor->config.disLine, yPos, &editor->a);
+                    displayDraw(&editor->a, "<");
+                }
+                if (spliceLen >= (editor->height - editor->config.disLine - 1)) {
+                    pos(editor->height - 1, yPos, &editor->a);
+                    displayDraw(&editor->a, ">");
+                }
+            }
+        }
         showLine++;
-        app(3, "\x1b[K", a);
+        row++;
+        yPos++;
     }
-    reset(a);
+    reset(&editor->a);
 }
 
 // buffer 
-void bufferDisplay(DisplayInit* dinit) {
-    App a = {NULL, 0};
-    // reset display
-    clearDisplay(&a);
+void bufferDisplay(Editor* editor) {
+    lineNumShow(editor);
+    if (editor->m.isStatus)
+        drawStatusBar(editor);
+    systemShowMessage(editor);
+    positionCursor(editor, &editor->a);
+    writeDisplay(&editor->a);
 
-    // show lines
-    lineNumShow(&a, dinit);
+    editor->a.string = NULL;
+    editor->a.length = 0;
+}
 
-    // show mesage
-    systemShowMessage(dinit, &a);
-
-    // show status bar
-    drawStatusBar(&a, dinit);
-    
-    // write everything to the terminal
-    write(STDOUT_FILENO, a.string, a.length);
-    free(a.string);
+void initConfig(Editor* editor) {
+    editor->config.tabcount = 4;
+    editor->config.disLine = 6;
 }
 
 // init
-void showDisplay(DisplayInit* dinit) {
-    dinit->d.cursorX = 6;
-    dinit->d.cursorY = 1;
-    dinit->d.offsetX = 0;
-    dinit->d.calculateLengthStop = dinit->row[0].length;
-    dinit->modified = 0;
-    dinit->d.scrollX = 0;
-    dinit->d.scrollY = 0;
-    setDinitMsg(dinit, "", 0);
-    getWindowSize(dinit);
+void showDisplay(Editor* editor) {
+    editor->c.cursorX = 0;
+    editor->c.cursorY = 1;
+    editor->modified = 0;
+    editor->tabRem = 0;
+    editor->c.scrollX = 0;
+    editor->c.scrollY = 0;
+    editor->a.string = NULL;
+    editor->a.length = 0;
+    editor->m.isStatus = 1;
+    editor->c.utfJump = 0;
+    seteditorMsg(editor, "", 0);
 
     while (1) {
-        bufferDisplay(dinit);
-        
-        // get and process the keypresses
-        processKeypresses(displayKeys(), dinit);
+        clearDisplay(&editor->a);
+        getWindowSize(editor);
+        bufferDisplay(editor);
+        controlKeypresses(editor);
+        scroll(editor);
     }
 }
