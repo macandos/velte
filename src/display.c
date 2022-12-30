@@ -269,17 +269,18 @@ void lineNumShow(Editor* editor) {
             processFG(&editor->a, WHITE);
 
             // append the text in
-            size_t spliceLen;
-            size_t scrollX;
+            size_t spliceLen = row->tabs.tlen;
+            size_t scrollX = 0;
             if (row->tabs.tlen + editor->c.utfJump > (size_t)editor->height - editor->config.disLine - 1) {
-                scrollX = horizontalScrollOffset(&spliceLen, 
-                                                editor->c.cursorX + editor->c.utfJump, 
-                                                editor->height - editor->config.disLine - editor->c.utfJump, 
-                                                row->tabs.tlen);
-            }
-            else {
-                scrollX = 0;
-                spliceLen = row->tabs.tlen;
+                if (editor->c.cursorY + editor->c.scrollY == showLine) {
+                    scrollX = horizontalScrollOffset(&spliceLen, 
+                                                    editor->c.cursorX + editor->c.utfJump, 
+                                                    editor->height - editor->config.disLine - editor->c.utfJump, 
+                                                    row->tabs.tlen);
+                }
+                else {
+                    spliceLen = editor->height - editor->config.disLine - 1;
+                }
             }
             char* toStr = utftomb(&row->tabs.tab[scrollX - 1], spliceLen, &spliceLen);
             writeToAppendBuffer(spliceLen, toStr, &editor->a);
