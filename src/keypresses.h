@@ -21,13 +21,13 @@ void removeLine(int pos, Editor* editor);
 void deleteChar(Editor* editor);
 void positionCursor(Editor* editor, App* a);
 void scroll(Editor* editor);
-int calcCursorY(Editor* editor);
 void tabChange(Editor* editor, int pos);
 int isTab(Editor* editor, size_t pos, int y);
 int getTabCount(Editor* editor, int y);
 int countTabX(Editor* editor, size_t end, bool countX);
 void checkAheadTab(Editor* editor, size_t xBeforeNL, size_t xAfterNL, int rF);
 int roundXToTabSpace(unsigned char tabcount, int num);
-void checkCharacterWith(Editor* editor);
+void xUnderDisLine(Editor* editor);
+void overLine(Editor* editor);
 
 #endif /* KEYPRESSES_H_ */

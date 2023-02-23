@@ -38,7 +38,7 @@ void drawStatusBar(Editor* editor) {
             else displayDraw(&editor->a, "Untitled ");
             displayDraw(&editor->a, "%d/%d ", 
                         editor->c.cursorX,
-                        editor->c.cursorY);
+                        editor->c.utfJump);
             if (editor->modified > 0) {
                 displayDraw(&editor->a, "(modified)");
             }
@@ -131,7 +131,9 @@ char *editorPrompt(Editor* editor, char* msg) {
     char* charMsg = NULL;
     size_t len = 0;
     size_t resultingLen;
-    editor->c.maskX = 0;
+    editor->pc.maskX = 0;
+    editor->c.utfJump = 0;
+    editor->pc.scrollMaskX = 0;
 
     strmsg = check_malloc((len + 1) * sizeof(uint32_t));
     strmsg[len] = '\0';
@@ -142,25 +144,14 @@ char *editorPrompt(Editor* editor, char* msg) {
         getWindowSize(editor);
         displayDraw(&editor->a, "\033[?7l");
 
-        charMsg = utftomb(strmsg, len, &resultingLen);
-        editor->c.scrollX = horizontalScrollOffset(&resultingLen, editor->c.maskX, editor->height - 1, len + 1);
+        size_t spliceLen = len - editor->pc.scrollMaskX;
+        charMsg = utftomb(&strmsg[editor->pc.scrollMaskX], spliceLen, &resultingLen);
 
         pos(0, editor->width - 2, &editor->a);
         displayDraw(&editor->a, "Ctrl+X: Cancel - %s", msg);
         pos(0, editor->width - 1, &editor->a);
-        writeToAppendBuffer(resultingLen, &charMsg[editor->c.scrollX], &editor->a);
+        writeToAppendBuffer(resultingLen, charMsg, &editor->a);
 
-       if ((len + 1) >= (size_t)editor->height - 2) {
-            processBG(&editor->a, RED);
-            if (editor->c.maskX >= (size_t)editor->height - 2) {
-                pos(0, editor->width - 1, &editor->a);
-                displayDraw(&editor->a, "<");
-            }
-            if (resultingLen >= (size_t)editor->height - 2) {
-                pos(editor->height - 1, editor->width - 1, &editor->a);
-                displayDraw(&editor->a, ">");
-            }
-        }
         bufferDisplay(editor);
         editor->m.isStatus = 1;
 
@@ -170,32 +161,30 @@ char *editorPrompt(Editor* editor, char* msg) {
             case '\n':
             case '\r':
                 // return the prompt entered
-                editor->c.maskX = editor->c.cursorX;
                 return charMsg;
             case CTRL_KEY('x'):
-                editor->c.maskX = editor->c.cursorX;
                 return 0;
             case BACKSPACE_KEY: {
-                if (editor->c.maskX > 0) {
-                    size_t prev = editor->c.maskX - 1;
+                if (editor->pc.maskX > 0) {
+                    size_t prev = editor->pc.maskX - 1;
                     memmove(&strmsg[prev], &strmsg[prev + 1], (len - prev - 1) * sizeof(uint32_t));
-                    editor->c.maskX--;
+                    editor->pc.maskX--;
                     len--;
                 }
                 break;
             }
             case ARROW_LEFT:
-                if (editor->c.maskX > 0) editor->c.maskX--;
+                if (editor->pc.maskX > 0) editor->pc.maskX--;
                 break;
             case ARROW_RIGHT:
-                if (editor->c.maskX < len) editor->c.maskX++;
+                if (editor->pc.maskX < len) editor->pc.maskX++;
                 break;
             default:
-                if (!iscntrl(c)) {
+                if (c != '\0') {
                     strmsg = check_realloc(strmsg, (len + 2) * sizeof(uint32_t));
-                    memmove(&strmsg[editor->c.maskX + 1], &strmsg[editor->c.maskX], (len - editor->c.maskX) * sizeof(uint32_t));
-                    strmsg[editor->c.maskX] = c;
-                    editor->c.maskX++;
+                    memmove(&strmsg[editor->pc.maskX + 1], &strmsg[editor->pc.maskX], (len - editor->pc.maskX) * sizeof(uint32_t));
+                    strmsg[editor->pc.maskX] = c;
+                    editor->pc.maskX++;
                     len++;
 
                     strmsg[len] = '\0';
@@ -203,8 +192,24 @@ char *editorPrompt(Editor* editor, char* msg) {
                 break;
 
         }
-    }
 
+        // do the same thing we did with the regular chorizontal scrolling
+        editor->c.utfJump = 0;
+        for (size_t i = editor->pc.scrollMaskX; i < editor->pc.maskX; i++) {
+            // make the mask cursor line up with multi-width characters
+            calculateCharacterWidth(editor, strmsg[i]);
+        }
+        if (editor->pc.maskX + editor->c.utfJump > (size_t)editor->height + editor->pc.scrollMaskX - 5) {
+            editor->pc.scrollMaskX = editor->pc.maskX + editor->c.utfJump - editor->height + 5;
+        }
+        else if (editor->pc.maskX + editor->c.utfJump < (size_t)editor->pc.scrollMaskX && editor->pc.scrollMaskX > 0) {
+            editor->pc.scrollMaskX = editor->pc.maskX + editor->c.utfJump;
+        }
+        editor->c.utfJump = 0;
+        for (size_t i = editor->pc.scrollMaskX; i < editor->pc.maskX; i++) {
+            calculateCharacterWidth(editor, strmsg[i]);
+        }
+    }
     free(strmsg);
     free(charMsg);
 }
@@ -229,18 +234,6 @@ void systemShowMessage(Editor* editor) {
     }
 }
 
-/*  get a string and calculate how many times it goes past the height specfifed and returns
-    the amount of times it goes over times the height. it also returns the stirng length subracted the return value
-    so we can print that section of the string out onto the display
-*/
-int horizontalScrollOffset(size_t* returnLength, size_t by, size_t height, size_t length) {
-    if (by < 6) by = 7;
-    int scrollDiv = (by - 5) / (height - 6);
-    size_t scrollX = (height - 6) * scrollDiv;
-    if (returnLength) *returnLength = length - scrollX - 1;
-    return scrollX;
-}
-
 // show linenumbers on the screen
 void lineNumShow(Editor* editor) {
     // disable default line wrapping
@@ -257,8 +250,7 @@ void lineNumShow(Editor* editor) {
             additionally, we also want the foreground to be a 
             lighter grey, unless if the cursor is on the line
         */
-        processBG(&editor->a, DARKER_GREY);
-        if (editor->c.cursorY + editor->c.scrollY == showLine)
+        if (editor->c.cursorY == showLine)
             processFG(&editor->a, WHITE);
         else processFG(&editor->a, LIGHTER_GREY);
 
@@ -269,34 +261,11 @@ void lineNumShow(Editor* editor) {
             processFG(&editor->a, WHITE);
 
             // append the text in
-            size_t spliceLen = row->tabs.tlen;
-            size_t scrollX = 0;
-            if (row->tabs.tlen + editor->c.utfJump > (size_t)editor->height - editor->config.disLine - 1) {
-                if (editor->c.cursorY + editor->c.scrollY == showLine) {
-                    scrollX = horizontalScrollOffset(&spliceLen, 
-                                                    editor->c.cursorX + editor->c.utfJump, 
-                                                    editor->height - editor->config.disLine - editor->c.utfJump, 
-                                                    row->tabs.tlen);
-                }
-                else {
-                    spliceLen = editor->height - editor->config.disLine - 1;
-                }
-            }
-            char* toStr = utftomb(&row->tabs.tab[scrollX - 1], spliceLen, &spliceLen);
+            size_t spliceLen = row->tabs.tlen - editor->c.scrollX;
+            if (spliceLen >= (size_t)editor->height - 6) spliceLen = editor->height - 6;
+            char* toStr = utftomb(&row->tabs.tab[editor->c.scrollX], spliceLen, &spliceLen);
             writeToAppendBuffer(spliceLen, toStr, &editor->a);
             free(toStr);
-
-            if (row->tabs.tlen + editor->c.utfJump > editor->height - editor->config.disLine - 1) {
-                processBG(&editor->a, RED);
-                if (editor->c.cursorX + editor->c.utfJump >= (size_t)editor->height - editor->config.disLine - 1) {
-                    pos(editor->config.disLine, yPos, &editor->a);
-                    displayDraw(&editor->a, "<");
-                }
-                if (spliceLen >= (editor->height - editor->config.disLine - 1)) {
-                    pos(editor->height - 1, yPos, &editor->a);
-                    displayDraw(&editor->a, ">");
-                }
-            }
         }
         showLine++;
         row++;
@@ -327,6 +296,7 @@ void initConfig(Editor* editor) {
 void showDisplay(Editor* editor) {
     editor->c.cursorX = 0;
     editor->c.cursorY = 1;
+    editor->c.tabX = 0;
     editor->modified = 0;
     editor->tabRem = 0;
     editor->c.scrollX = 0;
@@ -335,6 +305,8 @@ void showDisplay(Editor* editor) {
     editor->a.length = 0;
     editor->m.isStatus = 1;
     editor->c.utfJump = 0;
+    editor->pc.maskX = 0;
+    editor->pc.scrollMaskX = 0;
     seteditorMsg(editor, "", 0);
 
     while (1) {

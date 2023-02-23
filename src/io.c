@@ -83,7 +83,7 @@ off_t getFileLength(const char* filename) {
     return -1;
 }
 
-// create new row with string as text
+// create a new row with string as text
 void createRow(int pos, Editor* editor) {
     editor->row = check_realloc(editor->row, sizeof(Row) * (editor->linenum + 1));
     memmove(&editor->row[pos + 1], &editor->row[pos], sizeof(Row) * (editor->linenum - pos));

@@ -13,8 +13,6 @@ void clearDisplay(App* a);
 void showDisplay(Editor* editor); 
 void bufferDisplay(Editor* editor);
 void lineNumShow(Editor* editor);
-int horizontalScrollOffset(size_t* returnLength, size_t by, size_t height, size_t length);
-void printScrollIndicators(Editor* editor, size_t spliceLen, int y);
 void controlKeypresses(Editor* editor);
 void pos(size_t x, int y, App* a);
 void systemShowMessage(Editor* editor); 

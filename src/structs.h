@@ -19,19 +19,12 @@ typedef struct {
 
 typedef struct {
     size_t cursorX;
-    size_t maskX;
     size_t tabX;
     int cursorY;
-    int posY;
     size_t scrollX;
     int scrollY;
     int utfJump;
 } Cursor;
-
-typedef struct {
-    size_t length;
-    uint32_t* str;
-} Buffer;
 
 typedef struct {
     uint32_t* tab;
@@ -55,10 +48,16 @@ typedef struct {
     Tabs tabs;
 } Row;
 
+typedef struct {
+    size_t maskX;
+    int scrollMaskX;
+} PromptCursor;
+
 typedef struct { 
     int linenum;
     Row* row;
     Cursor c;
+    PromptCursor pc;
     Config config;
     App a;
     int width; 
