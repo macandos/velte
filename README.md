@@ -12,9 +12,6 @@ A basic terminal text editor written in C.
 - [ ] Word finding
 - [ ] Auto-completion (*very* basic!)
 
-## Dependencies
-For features such as copy and pasting, `xclip` is required
-
 ## Docs
 Documentation is still in development!
 
