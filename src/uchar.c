@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <wchar.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "uchar.h"
 #include "keypresses.h"
@@ -46,9 +47,46 @@ uint32_t* mbtoutf(const char* str, size_t length, size_t* arrLen) {
     return ret;
 }
 
+#define ASCII_LIMIT 0x7F
+#define TWO_BIT_LIMIT 0xDFBF
+#define THREE_BIT_LIMIT 0xEFBFBF
+#define FOUR_BIT_LIMIT 0xF48FBFBF
+#define UTF16_SURROGATE_LIMIT 0xEDBFBF
+
 // gets length of utf-8 character (trivial, but still works)
 char getLenUTF(uint32_t c) {
-    return 1 + (c >= 0x7F) + (c >= 0xDFBF) + (c >= 0XEFBFBD) + (c >= 0xF48FBFBD);
+    return 1 + (c >= ASCII_LIMIT) + (c >= TWO_BIT_LIMIT) + (c >= THREE_BIT_LIMIT) + (c >= FOUR_BIT_LIMIT);
+}
+
+// reverse byte order of a given character
+uint32_t reverseBytes(uint32_t character, char length) {
+    uint32_t ret = 0;
+    uint8_t byte;
+    int i;
+
+    for(i = 0; i < length * 8; i += 8)
+    {
+        byte = (character >> i) & 0xff;
+        ret |= byte << (length * 8 - 8 - i);
+    }
+    return ret;
+}
+
+// check if a given utf8 value is valid
+int isValidUTF(uint32_t character) {
+    if (character <= 0x7F) return 1; // if ASCII, return true
+
+    // make sure we are using the correct byte order
+    unsigned int i = 1;
+    uint32_t c;
+    if ((*(char*)&i) == 1) c = reverseBytes(character, getLenUTF(character));
+    else c = character;
+
+    if (0xC280 <= c && c <= TWO_BIT_LIMIT) return ((c & 0xE0C0) == 0xC080);
+    if (0xEDA080 <= c && c <= UTF16_SURROGATE_LIMIT) return 0;
+    if (0xE0A080 <= c && c <= THREE_BIT_LIMIT) return ((c & 0xF0C0C0) == 0xE08080);
+    if (0xF0908080 <= c && c <= FOUR_BIT_LIMIT) return ((c & 0xF8C0C0C0) == 0xF0808080);
+    return 0;
 }
 
 // convert a uint32_t array to a char array
@@ -74,7 +112,6 @@ uint32_t getMKeys() {
     uint32_t character = '\0';
     if (read(STDIN_FILENO, &character, sizeof(uint32_t)) == -1 && errno != EAGAIN)
         errorHandle("Velte: read");
-    
     // checking for arrow keys
     if (memcmp(&character, "\033[A", 3) == 0)
         character = ARROW_UP;
@@ -84,6 +121,7 @@ uint32_t getMKeys() {
         character = ARROW_RIGHT;
     else if (memcmp(&character, "\033[D", 3) == 0)
         character = ARROW_LEFT;
+    else if (!isValidUTF(character)) return 0;
 
     return character;
 }
@@ -127,8 +165,10 @@ uint32_t utfToCodepoint(const char* in, char chLen) {
     return ret;
 }
 
-void calculateCharacterWidth(Editor* editor, uint32_t ch) {
-    if (ch == '\t') return;
-    char* toStr = utftomb(&ch, 1, NULL);
-    editor->c.utfJump += getCharWidth(utfToCodepoint(toStr, getLenUTF(ch))) - 1;
+void calculateCharacterWidth(Editor* editor, uint32_t ch, int* utfJump) {
+    if (editor->config.isUtf8) {
+        if (ch == '\t') return;
+        char* toStr = utftomb(&ch, 1, NULL);
+        *utfJump += getCharWidth(utfToCodepoint(toStr, getLenUTF(ch))) - 1;
+    }
 }

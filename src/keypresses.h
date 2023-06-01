@@ -19,15 +19,21 @@ void delChar(Editor* editor, size_t pos);
 void appendLine(Row* row, uint32_t* s, size_t len);
 void removeLine(int pos, Editor* editor);
 void deleteChar(Editor* editor);
-void positionCursor(Editor* editor, App* a);
-void scroll(Editor* editor);
+void positionCursor(Cursor cursor, int disLine, App* a);
+void scroll(Editor* editor, Cursor* cursor, uint32_t* str, size_t disLine);
 void tabChange(Editor* editor, int pos);
 int isTab(Editor* editor, size_t pos, int y);
 int getTabCount(Editor* editor, int y);
 int countTabX(Editor* editor, size_t end, bool countX);
 void checkAheadTab(Editor* editor, size_t xBeforeNL, size_t xAfterNL, int rF);
-int roundXToTabSpace(unsigned char tabcount, int num);
+int roundXToTabSpace(size_t tabcount, int num);
 void xUnderDisLine(Editor* editor);
 void overLine(Editor* editor);
+void editorCommand(Editor* editor, char* command);
+void gotoX(Editor* editor, char** args, int arglen);
+void gotoY(Editor* editor, char** args, int arglen);
+void config(Editor* editor, char** args, int arglen);
+void display(Editor* editor, char** args, int arglen);
+void load(Editor* editor, char** args, int arglen);
 
 #endif /* KEYPRESSES_H_ */

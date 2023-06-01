@@ -12,28 +12,20 @@
 #include <errno.h>
 #include <sys/stat.h>
 
-void openFile(char* filename, Editor* editor) {
-    editor->linenum = 0;
-    uint32_t space = SPACE_KEY;
-    editor->filename = filename;
-    editor->row = NULL;
+// split a file into an array of individual lines
+char** splitFileIntoLines(char* filename, int* linenums) {
     off_t idx = 0;
-    int fileLength = getFileLength(filename);
-
-    // if the file contains nothing, or it doesn't exist (when
-    // `getFileLength` returns -1, append an empty line
-    if (fileLength <= 0) {
-        createRow(editor->linenum, editor);
-        changeStr(&space, 1, editor->linenum, editor);
-        return;
-    }
-
+    off_t fileLength = getFileLength(filename);
+    int linenum = 0;
+    char** ret = NULL;
+    
     // open the file and store it in one string
     int fd = open(filename, O_RDONLY);
     char* fileStr = check_malloc(fileLength + 1);
     char* line = NULL;
     read(fd, fileStr, fileLength);
     fileStr[fileLength] = '\0';
+    close(fd);
 
     // loop through the file string and split it into the individual lines
     // and make sure unwanted characters such as `\n` and `\r` are not included
@@ -51,14 +43,57 @@ void openFile(char* filename, Editor* editor) {
         memcpy(line, &fileStr[idx - linelen - 1], linelen);
         line[linelen] = '\0';
 
-        // convert the line into a uint32_t and append it into the individual line buffers
-        createRow(editor->linenum, editor);
-        size_t realLen;
-        uint32_t* uIntStr = mbtoutf(line, linelen, &realLen);
-        changeStr(uIntStr, realLen+1, editor->linenum, editor);
+        // append the line into the buffer
+        ret = check_realloc(ret, sizeof(char*) * (linenum + 1));
+        ret[linenum] = check_malloc(linelen + 1);
+        memcpy(ret[linenum], line, linelen);
+        ret[linenum][linelen] = '\0';
+        linenum++;
     }
     free(fileStr);
     free(line);
+    *linenums = linenum;
+    return ret;
+}
+
+void openFile(char* filename, Editor* editor) {
+    editor->linenum = 0;
+    uint32_t space = SPACE_KEY;
+    editor->filename = filename;
+    editor->row = NULL;
+    off_t fileLength = getFileLength(filename);
+
+    // if the file contains nothing, or it doesn't exist (when
+    // `getFileLength` returns -1, append an empty line
+    if (fileLength <= 0) {
+        createRow(editor->linenum, editor);
+        changeStr(&space, 1, editor->linenum, editor);
+        return;
+    }
+
+    int linenums;
+    char** lines = splitFileIntoLines(filename, &linenums);
+    size_t realLen;
+
+    for (int i = 0; i < linenums; i++) {
+        createRow(i, editor);
+        uint32_t* uIntStr = mbtoutf(lines[i], strlen(lines[i]), &realLen);
+        changeStr(uIntStr, realLen + 1, i, editor);
+    }
+}
+
+// reads a velte config file and parses it
+void readConfigFile(Editor* editor, char* filename) {
+    off_t fileLength = getFileLength(filename);
+    if (fileLength < 0) {
+        seteditorMsg(editor, "No such file", 12);
+        return;
+    }
+    int linenums;
+    char** lines = splitFileIntoLines(filename, &linenums);
+    for (int i = 0; i < linenums; i++) {
+        editorCommand(editor, lines[i]);
+    }
 }
 
 // append a string onto a line, replacing the old string in the array.
@@ -105,6 +140,8 @@ void writeFile(Editor* editor) {
 
     uint32_t* totalStr = check_malloc((length + 1) * sizeof(uint32_t));
     int strLen = 0;
+
+    // append all the lines into one string
     for (int i = 0; i < editor->linenum; i++) {
         memcpy(&totalStr[strLen], editor->row[i].str, editor->row[i].length * sizeof(uint32_t));
 
@@ -114,6 +151,8 @@ void writeFile(Editor* editor) {
     size_t rL;
     char* toWrite = utftomb(totalStr, length, &rL);
     char* filename = editor->filename;
+    
+    // create a new file if it doesnt exist
     if (!filename) {
         filename = editorPrompt(editor, "Save as: \0");
         if (filename == 0) {
@@ -126,10 +165,11 @@ void writeFile(Editor* editor) {
     // open the file and append all the contents of the total file string to it
     int fd = open(filename, O_RDWR | O_CREAT, 0644);
     if (fd == -1) {
-        char errorStr[64];
+        char errorStr[19 + strlen(filename)];
         snprintf(errorStr, sizeof(errorStr), "Cannot save file: %s", strerror(errno));
         seteditorMsg(editor, errorStr, strlen(errorStr));
         free(totalStr);
+        close(fd);
         return;
     }
 

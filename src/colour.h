@@ -4,19 +4,10 @@
 #include "structs.h"
 #include "display.h"
 
-// colours
-// GREYSCALE
-#define DARK_GREY 235
-#define DARKER_GREY 234
-#define LIGHT_GREY 237
-#define LIGHTER_GREY 245
-#define WHITE 255
+#define COLOUR(R, G, B) { .r = R, .g = G, .b = B };
 
-// OTHER COLOURS
-#define RED 9
-
-void processBG(App* a, int colour);
-void processFG(App* a, int colour);
+void processBG(App* a, Rgb colour);
+void processFG(App* a, Rgb colour);
 void reset(App* a);
 
 #endif
