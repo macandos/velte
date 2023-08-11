@@ -31,6 +31,7 @@ typedef enum {
 typedef struct {
     unsigned char r, g, b;
     bool isTransparent;
+    bool sub;
 } Rgb;
 
 typedef struct {
