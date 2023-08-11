@@ -1,0 +1,7 @@
+-- Default config file
+
+-- Load syntax files
+load syntaxes/c.velte
+load syntaxes/py.velte
+load syntaxes/rs.velte
+
