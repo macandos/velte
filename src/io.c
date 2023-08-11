@@ -83,17 +83,18 @@ void openFile(char* filename, Editor* editor) {
 }
 
 // reads a velte config file and parses it
-void readConfigFile(Editor* editor, char* filename) {
+int readConfigFile(Editor* editor, char* filename) {
     off_t fileLength = getFileLength(filename);
     if (fileLength < 0) {
-        seteditorMsg(editor, "No such file", 12);
-        return;
+        seteditorMsg(editor, "No such file");
+        return 0;
     }
     int linenums;
     char** lines = splitFileIntoLines(filename, &linenums);
     for (int i = 0; i < linenums; i++) {
         editorCommand(editor, lines[i]);
     }
+    return 1;
 }
 
 // append a string onto a line, replacing the old string in the array.
@@ -102,8 +103,8 @@ void changeStr(uint32_t* str, size_t length, int pos, Editor* editor) {
     memcpy(editor->row[pos].str, str, (length) * sizeof(uint32_t));
     editor->row[pos].length = length;
 
-    editor->row[pos].tabs.tab = NULL;
-    editor->row[pos].tabs.tlen = 0;
+    editor->row[pos].tab = NULL;
+    editor->row[pos].tlen = 0;
     tabChange(editor, pos);
 
     editor->linenum++;
@@ -156,10 +157,10 @@ void writeFile(Editor* editor) {
     if (!filename) {
         filename = editorPrompt(editor, "Save as: \0");
         if (filename == 0) {
-            seteditorMsg(editor, "", 0);
+            seteditorMsg(editor, "");
             return;
         }
-        seteditorMsg(editor, "Program saved!", 14);
+        seteditorMsg(editor, "Program saved!");
     }
 
     // open the file and append all the contents of the total file string to it
@@ -167,7 +168,7 @@ void writeFile(Editor* editor) {
     if (fd == -1) {
         char errorStr[19 + strlen(filename)];
         snprintf(errorStr, sizeof(errorStr), "Cannot save file: %s", strerror(errno));
-        seteditorMsg(editor, errorStr, strlen(errorStr));
+        seteditorMsg(editor, errorStr);
         free(totalStr);
         close(fd);
         return;
@@ -178,4 +179,5 @@ void writeFile(Editor* editor) {
     close(fd);
     free(totalStr);
     editor->filename = filename;
+    checkExtension(editor, editor->filename);
 }

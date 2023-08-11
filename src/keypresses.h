@@ -34,6 +34,8 @@ void gotoX(Editor* editor, char** args, int arglen);
 void gotoY(Editor* editor, char** args, int arglen);
 void config(Editor* editor, char** args, int arglen);
 void display(Editor* editor, char** args, int arglen);
+void syntax(Editor* editor, char** args, int arglen);
+void fileend(Editor* editor, char** args, int arglen);
 void load(Editor* editor, char** args, int arglen);
 
 #endif /* KEYPRESSES_H_ */

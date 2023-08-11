@@ -20,14 +20,18 @@ void systemShowMessage(Editor* editor);
 void getWindowSize(Editor* editor); 
 void drawStatusBar(Editor* editor);
 char *editorPrompt(Editor* editor, char* msg);
-void seteditorMsg(Editor* editor, char* msg, size_t length);
+void seteditorMsg(Editor* editor, char* msg);
 void initConfig(Editor* editor);
 void* check_malloc(size_t length);
 void* check_realloc(void* buff, size_t length);
+void errorHandle(const char* err);
 int editorConvStringToSizeT(Editor* editor, size_t* conv, char* str, int base);
 int checkRgb(Editor* editor, Rgb* rgbVal, char* hexValue);
-void highlight(Editor* editor, char* str);
-bool isPunct(char c);
-bool isSpace(char c);
+void highlight(Editor* editor, char* str, size_t length);
+SyntaxMap* appendSyntax(Editor* editor, bool isCurr, char* pattern, Rgb colour);
+bool isSyntax(Editor* editor, int* outLen, char* str, size_t pos);
+void createSyntax(Editor* editor, char* pattern, char* name);
+int checkExtension(Editor* editor, char* filename);
+bool isSeparator(char c);
 
 #endif

@@ -3,6 +3,7 @@
 #include "keypresses.h"
 #include "colour.h"
 #include "uchar.h"
+#include "io.h"
 
 #include <stdio.h>
 #include <ctype.h>
@@ -16,9 +17,9 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <limits.h>
+#include "../libs/uthash.h"
 
 #define MSG_WAIT_TIMES 5
-#define STARTING_VELTE_STR 9
 #define STARTING_SAVE_STR 18
 
 // draw the status bar
@@ -27,28 +28,12 @@ void drawStatusBar(Editor* editor) {
     processBG(&editor->a, editor->config.colours[STATUS_COLOUR]);
     processFG(&editor->a, editor->config.colours[STATUS_TEXT_COLOUR]);
     
-    displayDraw(&editor->a, "Velte - ");
-
-    // append the filaneme; if any, and other information, such as if the file is modified or not
-    for (int i = 0; i < editor->height; i++) {
-        if (i == STARTING_VELTE_STR) {
-            pos(i, editor->width, &editor->a);
-            if (editor->filename != NULL) {
-                displayDraw(&editor->a, "%s", editor->filename);
-                pos(i + strlen(editor->filename) + 1, editor->width, &editor->a);
-            }
-            else displayDraw(&editor->a, "Untitled ");
-            displayDraw(&editor->a, "%d/%d ", 
-                        editor->c.cursorX,
-                        editor->c.scrollY);
-            if (editor->modified > 0) {
-                displayDraw(&editor->a, "(modified)");
-            }
-        }
-        else {
-            displayDraw(&editor->a, " ");
-        }
-    }
+    int len = displayDraw(&editor->a, "Velte - %s %d/%d %s %s",
+                            editor->filename ? editor->filename : "Untitled",
+                            editor->c.scrollX, editor->c.cursorY,
+                            (!editor->modified) ? "-" : "(modified) -",
+                            editor->currSyntax->syntaxName);
+    for (int i = len; i < editor->height - 1; i++) displayDraw(&editor->a, " ");
     reset(&editor->a);
 }
 
@@ -78,6 +63,12 @@ void clearDisplay(App* a) {
     displayDraw(a, "\033c");
 }
 
+// error handling
+void errorHandle(const char* err) {
+    perror(err);
+    exit(1);
+}
+
 // malloc and check if it failed so we don't have to do this every time
 void* check_malloc(size_t length) {
     void* tmp = malloc(length);
@@ -103,11 +94,11 @@ int editorConvStringToSizeT(Editor* editor, size_t* conv, char* str, int base) {
     
     // making sure the value is in range
     if ((unsigned long)toSizeT > SIZE_MAX || toSizeT < 0) {
-        seteditorMsg(editor, "Argument is out of range", 25);
+        seteditorMsg(editor, "Argument is out of range");
         return 0;
     }
     if (*end != '\0') {
-        seteditorMsg(editor, "Invalid number", 15);
+        seteditorMsg(editor, "Invalid number");
         return 0;
     }
     *conv = toSizeT;
@@ -150,7 +141,7 @@ void writeToAppendBuffer(size_t fLen, char* formattedString, App* a) {
     a->string[a->length] = '\0';
 }
 
-// draw messages to the screen
+// draw messages to the screen, and return the length
 int displayDraw(App* a, const char* format, ...) {
     va_list ap;
     va_start(ap, format);
@@ -203,13 +194,13 @@ char *editorPrompt(Editor* editor, char* msg) {
 
         int res = snprintf(printMsg, printMsgLen, "Ctrl-X Cancel - %s%s", msg, charMsg);
         if (res < 0) break;
-        seteditorMsg(editor, printMsg, printMsgLen);
+        seteditorMsg(editor, printMsg);
         
         // continue to let the display buffer
         bufferDisplay(editor);
         positionCursor(cursor, strlen(msg) + STARTING_SAVE_STR - 1, &editor->a);
         writeDisplay(&editor->a);
-        seteditorMsg(editor, "", 0);
+        seteditorMsg(editor, "");
 
         // get a keypress from the user
         uint32_t c = getMKeys();
@@ -250,7 +241,7 @@ char *editorPrompt(Editor* editor, char* msg) {
 
         }
 
-        // do the same thing we did with the regular chorizontal scrolling
+        // do the same thing we did with the regular horizontal scrolling
         cursor.utfJump = 0;
         for (size_t i = cursor.scrollX; i < cursor.cursorX; i++) {
             // make the mask cursor line up with multi-width characters
@@ -266,23 +257,175 @@ char *editorPrompt(Editor* editor, char* msg) {
 }
 
 // set the display message to anything we want
-void seteditorMsg(Editor* editor, char* msg, size_t length) {
-    editor->m.msg = check_malloc(length + 1);
-    memcpy(editor->m.msg, msg, length);
-    editor->m.msg[length] = '\0';
-    editor->m.time = time(NULL);
+void seteditorMsg(Editor* editor, char* msg) {
+    size_t length = strlen(msg);
+    editor->msg = check_malloc(length + 1);
+    memcpy(editor->msg, msg, length);
+    editor->msg[length] = '\0';
+    editor->time = time(NULL);
 }
 
 // display a message to the user
 void systemShowMessage(Editor* editor) {
-    if (time(NULL) < editor->m.time + MSG_WAIT_TIMES) {
+    if (time(NULL) < editor->time + MSG_WAIT_TIMES) {
         processFG(&editor->a, editor->config.colours[MESSAGE_COLOUR]);
         pos(0, editor->width - 2, &editor->a);
-        displayDraw(&editor->a, editor->m.msg);
+        displayDraw(&editor->a, "%s", editor->msg);
     }
     else {
         // clear it when the time has run out
-        memset(editor->m.msg, 0, strlen(editor->m.msg));
+        free(editor->msg);
+        editor->msg = NULL;
+    }
+}
+
+// check the filename if there is an extension, and set currsyntax to the respected syntax file
+int checkExtension(Editor* editor, char* filename) {
+    if (filename == NULL) return 0;
+
+    // get the file extension
+    char* lastOccurance = strrchr(filename, '.');
+    if (!lastOccurance || lastOccurance == filename) return 0;
+    lastOccurance++;
+
+    // check if it matches any of our syntax file extensions
+    for (int i = 0; i < editor->syntaxLen; i++) {
+        if (regexec(&editor->syntaxes[i].fileEndings, lastOccurance, 0, NULL, 0) == 0) {
+            editor->currSyntax = (editor->syntaxes + i);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// check if the character is a separator
+bool isSeparator(char c) {
+    if (strchr("!{}:@~<>?,./;'#~[]()-=*+_¬¦\"` \t", c)) {
+        return true;
+    }
+    return false;
+}
+
+// initialize a new syntax struct
+void createSyntax(Editor* editor, char* pattern, char* name) {
+    regex_t regExp;
+    // check if the regex is correct
+    int ret = regcomp(&regExp, pattern, REG_EXTENDED | REG_NOSUB);
+    if (ret != 0) {
+        seteditorMsg(editor, "Unable to create syntax: regcomp() failed");
+        return;
+    }
+    // initialize a new syntax field
+    int len = editor->syntaxLen;
+    int pos = editor->currSyntax - editor->syntaxes;
+    editor->syntaxes = check_realloc(editor->syntaxes, (len + 1) * sizeof(Syntax));
+    editor->syntaxes[len].map = NULL;
+    editor->syntaxes[len].fileEndings = regExp;
+    if (strlen(name) < 32) {
+        strncpy(editor->syntaxes[len].syntaxName, name, strlen(name));
+        editor->syntaxes[len].syntaxName[strlen(name)] = '\0';
+    }
+    editor->syntaxLen++;
+
+    editor->currSyntax = editor->syntaxes + pos;
+}
+
+// append a new syntax rule
+SyntaxMap* appendSyntax(Editor* editor, bool isCurr, char* pattern, Rgb colour) {
+    SyntaxMap* map = check_malloc(sizeof(SyntaxMap)), *tmp;
+    SyntaxMap* currMap = (isCurr ? editor->currSyntax->map : editor->syntaxes[editor->syntaxLen - 1].map);
+    regex_t regexExp;
+
+    // if regcomp fails, the error will be stored here
+    char failBuff[100];
+
+    // compile the regex. return if it fails
+    int ret = regcomp(&regexExp, pattern, REG_EXTENDED);
+    if (ret != 0) {
+        regerror(ret, &regexExp, failBuff, 100);
+        seteditorMsg(editor, failBuff);
+        return currMap;
+    }
+
+    // if the pattern is already in the list, then return  
+    HASH_FIND(hh, currMap, &regexExp, sizeof(regex_t), tmp);
+    if (tmp) return currMap;
+
+    // add the values to the hashmap
+    map->value = colour;
+    map->key = regexExp;
+    HASH_ADD(hh, currMap, key, sizeof(SyntaxMap), map);
+    return currMap;
+}
+
+bool isSyntax(Editor* editor, int* outLen, char* str, size_t pos) {
+    SyntaxMap* map, *tmp;
+    regmatch_t pmatch[1];
+    bool isMatch = false;
+
+    if (!isSeparator(*(str - 1)) && !isSeparator(*(str))) return false;
+
+    // iterate through the hashmap and match
+    HASH_ITER(hh, editor->currSyntax->map, map, tmp) {
+        if (regexec(&map->key, str, 1, pmatch, 0) == 0) {
+            int length = pmatch[0].rm_eo - pmatch[0].rm_so;
+
+            if (!isSeparator(*(str + length)) && !isSeparator(*(str + length - 1))) continue;
+            if (length <= 0 || (size_t)pmatch[0].rm_so + pos != pos) continue;
+
+            if (editor->matchLen == 0) {
+                *outLen = length;
+            }
+            if ((size_t)pmatch[0].rm_eo <= (size_t)*outLen) {
+                editor->currMatches = check_realloc(editor->currMatches, (editor->matchLen + 1) * sizeof(Match));
+                editor->currMatches[editor->matchLen].ends.rm_so = pos;
+                editor->currMatches[editor->matchLen].ends.rm_eo = pos + length;
+                editor->currMatches[editor->matchLen].colour = map->value;
+
+                editor->currMatchPos = editor->matchLen;
+                editor->matchLen++;
+            }
+            isMatch = true;
+        }
+    }
+    return isMatch;
+}
+
+// highlight a string
+void highlight(Editor* editor, char* str, size_t length) {
+    int outLen = length;
+    size_t i = 0, tmp;
+    if (!editor->currSyntax) {
+        displayDraw(&editor->a, "%s", str);
+        return;
+    }
+    while (i < length) {
+        bool ifStrSyntax = isSyntax(editor, &outLen, &str[i], i);
+        if (ifStrSyntax) {
+            tmp = i;
+            while (i < tmp + outLen) {
+                processBG(&editor->a, editor->config.colours[BACKGROUND_COLOUR]);
+                processFG(&editor->a, editor->currMatches[editor->currMatchPos].colour);
+                displayDraw(&editor->a, "%c", str[i]);
+                i++;
+
+                while (editor->currMatchPos > 0 && i >= (size_t)editor->currMatches[editor->currMatchPos].ends.rm_eo) {
+                    editor->currMatchPos--;
+                }
+
+                isSyntax(editor, &outLen, &str[i], i);
+            }
+            free(editor->currMatches);
+            editor->currMatches = NULL;
+            editor->currMatchPos = 0;
+            editor->matchLen = 0;
+        }
+        else {
+            reset(&editor->a);
+            processBG(&editor->a, editor->config.colours[BACKGROUND_COLOUR]);
+            displayDraw(&editor->a, "%c", str[i]);
+            i++;
+        }
     }
 }
 
@@ -319,12 +462,11 @@ void lineNumShow(Editor* editor) {
             reset(&editor->a);
             size_t scrollX = 0;
             if (editor->c.cursorY == (size_t)showLine) scrollX = editor->c.scrollX;
-            size_t spliceLen = row->tabs.tlen - scrollX;
+            size_t spliceLen = row->tlen - scrollX;
             if (spliceLen >= (size_t)editor->height - 6) spliceLen = editor->height - 6;
-            char* toStr = utftomb(&row->tabs.tab[scrollX], spliceLen, NULL);
+            char* toStr = utftomb(&row->tab[scrollX], spliceLen, &spliceLen);
             
-            processBG(&editor->a, editor->config.colours[BACKGROUND_COLOUR]);
-            displayDraw(&editor->a, "%s", toStr);
+            highlight(editor, toStr, spliceLen);
             free(toStr);
         }
         else {
@@ -342,7 +484,6 @@ void lineNumShow(Editor* editor) {
 
 // buffer 
 void bufferDisplay(Editor* editor) {
-    clearDisplay(&editor->a);
     lineNumShow(editor);
     getWindowSize(editor);   
     drawStatusBar(editor);
@@ -354,12 +495,25 @@ void initConfig(Editor* editor) {
     editor->config.disLine = DEFAULT_DISLINE;
     editor->config.linenums = true;
 
+    editor->syntaxes = NULL;
+    editor->syntaxLen = 0;
+    editor->currSyntax = editor->syntaxes;
+
     // initialize velte colours, by default all colours will be transparent
     editor->config.colours = check_malloc(COLOUR_CONFIG_LENGTH * sizeof(Rgb));
     for (int i = 0; i < COLOUR_CONFIG_LENGTH; i++) {
         editor->config.colours[i].isTransparent = true;
     }
 
+    // read the config file
+    if (!readConfigFile(editor, ".velte")) {
+        seteditorMsg(editor, "Could not load config file");
+        createSyntax(editor, " ", "No Syntax\0");
+    }
+    if (checkExtension(editor, editor->filename) == 0) {
+        createSyntax(editor, " ", "No Syntax\0");
+        editor->currSyntax = editor->syntaxes + editor->syntaxLen - 1;
+    }
 }
 
 void initCursor(Cursor* cursor) {
@@ -370,19 +524,25 @@ void initCursor(Cursor* cursor) {
     cursor->tabX = 0;
     cursor->utfJump = 0;
 }
+
 // init
 void showDisplay(Editor* editor) {
     editor->modified = 0;
     editor->tabRem = 0;
     editor->a.string = NULL;
     editor->a.length = 0;
-    seteditorMsg(editor, "", 0);
+    editor->currMatches = NULL;
+    editor->matchLen = 0;
+    editor->currMatchPos = 0;
+    seteditorMsg(editor, "");
     initCursor(&editor->c);
+    initConfig(editor);
+
     while (1) {
         bufferDisplay(editor);
         positionCursor(editor->c, editor->config.disLine, &editor->a);
         writeDisplay(&editor->a);
         controlKeypresses(editor);
-        scroll(editor, &editor->c, editor->row[editor->c.cursorY-1].str, editor->config.disLine);
+        scroll(editor, &editor->c, editor->row[editor->c.cursorY - 1].str, editor->config.disLine);
     }
 }

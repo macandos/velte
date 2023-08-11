@@ -4,7 +4,8 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <stdbool.h>
-
+#include <regex.h>
+#include "../libs/uthash.h"
 
 typedef enum {
     ARROW_UP = 1,
@@ -33,6 +34,23 @@ typedef struct {
 } Rgb;
 
 typedef struct {
+    regex_t key;
+    Rgb value;
+    UT_hash_handle hh;
+} SyntaxMap;
+
+typedef struct {
+    regmatch_t ends;
+    Rgb colour;
+} Match;
+
+typedef struct {
+    SyntaxMap* map;
+    regex_t fileEndings;
+    char syntaxName[32];
+} Syntax;
+
+typedef struct {
     size_t tabcount;
     size_t disLine;
     bool isUtf8;
@@ -49,16 +67,6 @@ typedef struct {
     int utfJump;
 } Cursor;
 
-typedef struct {
-    uint32_t* tab;
-    size_t tlen;
-} Tabs;
-
-typedef struct {
-    char* msg;
-    int time;
-} Msg;
-
 typedef struct { 
     char* string; 
     size_t length;
@@ -66,8 +74,9 @@ typedef struct {
 
 typedef struct {
     uint32_t* str;
+    uint32_t* tab;
     size_t length;
-    Tabs tabs;
+    size_t tlen;
 } Row;
 
 typedef struct { 
@@ -78,10 +87,17 @@ typedef struct {
     App a;
     int width; 
     int height; 
-    char* filename; 
+    char* filename;
+    Syntax* syntaxes;
+    Syntax* currSyntax;
+    Match* currMatches;
+    int matchLen;
+    int currMatchPos;
+    int syntaxLen;
     int modified;
     int tabRem;
-    Msg m;
+    char* msg;
+    int time;
 } Editor;
 
 #endif

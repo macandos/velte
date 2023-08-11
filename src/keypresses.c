@@ -15,7 +15,9 @@ static void (*commandArr[])(Editor*, char**, int) = {
     &gotoY,
     &config,
     &display,
-    &load
+    &syntax,
+    &fileend,
+    &load,
 };
 
 static const char* colourConfigList[] = {
@@ -33,7 +35,9 @@ static const char* commandList[] = {
     "gotoy",
     "config",
     "display",
-    "load"
+    "syntax",
+    "fileend",
+    "load",
 };
 
 // parse an inputted terminal command
@@ -49,7 +53,7 @@ void editorCommand(Editor* editor, char* command) {
         return;
     }
     
-    // check if text has a command in it, and save the index so we can call the
+    // check if the text has a command in it, and save the index so we can call the
     // correct function afterwards
     bool isCommand = false;
     int i;
@@ -60,7 +64,9 @@ void editorCommand(Editor* editor, char* command) {
         }
     }
     if (!isCommand) {
-        seteditorMsg(editor, "Unknown command", 15);
+        char errMsg[21 + strlen(tok)];
+        if (snprintf(errMsg, sizeof(errMsg), "Unknown command: '%s'", tok))
+            seteditorMsg(editor, errMsg);
         return;
     }
 
@@ -89,7 +95,7 @@ void editorCommand(Editor* editor, char* command) {
 // changes the x position to the argument
 void gotoX(Editor* editor, char** args, int arglen) {
     if (args == NULL || arglen >= 2) {
-        seteditorMsg(editor, "Invalid arguments", 18);
+        seteditorMsg(editor, "gotox: Invalid arguments");
         return;
     }
     size_t by;
@@ -97,14 +103,14 @@ void gotoX(Editor* editor, char** args, int arglen) {
 
     // if the user put end, go to the end of the line
     if (strcmp(args[0], "end") == 0) {
-        by = editor->row[editor->c.cursorY - 1].tabs.tlen;
+        by = editor->row[editor->c.cursorY - 1].tlen;
         result = 1;
     }
     else {
         // convert the string into an integer
         result = editorConvStringToSizeT(editor, &by, args[0], 10);
     }
-    if (by > editor->row[editor->c.cursorY - 1].tabs.tlen || !result) return;
+    if (by > editor->row[editor->c.cursorY - 1].tlen || !result) return;
     editor->c.cursorX = by;
     countTabX(editor, editor->c.cursorX, true);
 }
@@ -113,7 +119,7 @@ void gotoX(Editor* editor, char** args, int arglen) {
 // changes the y position to the argument
 void gotoY(Editor* editor, char** args, int arglen) {
     if (args == NULL || arglen >= 2) {
-        seteditorMsg(editor, "Invalid arguments", 18);
+        seteditorMsg(editor, "gotoy: Invalid arguments");
         return;
     }
     size_t by;
@@ -136,15 +142,15 @@ void gotoY(Editor* editor, char** args, int arglen) {
 // change velte's config
 void config(Editor* editor, char** args, int arglen) {
     if (args == NULL || arglen >= 3) {
-        seteditorMsg(editor, "Invalid arguments", 18);
+        seteditorMsg(editor, "config: Invalid arguments");
         return;
     }
     // changing the distance between the edge of the screen and the linenums
-    else if (strcmp(args[0], "disLine") == 0) {
+    else if (strcmp(args[0], "disline") == 0) {
         size_t by;
         int result = editorConvStringToSizeT(editor, &by, args[1], 10);
         if (by > (size_t)editor->height || !result) {
-            seteditorMsg(editor, "Invalid length", 14);
+            seteditorMsg(editor, "config: disline: Invalid length");
             return;
         }
         editor->config.disLine = by;
@@ -158,7 +164,7 @@ void config(Editor* editor, char** args, int arglen) {
             tabChange(editor, editor->c.cursorY - 1);
         }
         else {
-            seteditorMsg(editor, "Invalid tabcount", 17);
+            seteditorMsg(editor, "config: Invalid tabcount");
             return;
         }
     }
@@ -173,11 +179,11 @@ void config(Editor* editor, char** args, int arglen) {
             editor->config.disLine = 1;
         }
         else {
-            seteditorMsg(editor, "Invalid option", 14);
+            seteditorMsg(editor, "config: Invalid option");
         }
     }
     else {
-        seteditorMsg(editor, "Invalid setting", 16);
+        seteditorMsg(editor, "config: Invalid setting");
     }
 }
 
@@ -185,7 +191,7 @@ void config(Editor* editor, char** args, int arglen) {
 // deals with changing how the look of velte looks
 void display(Editor* editor, char** args, int arglen) {
     if (args == NULL || arglen != 2) {
-        seteditorMsg(editor, "Invalid arguments", 18);
+        seteditorMsg(editor, "display: Invalid arguments");
         return;
     }
     Rgb rgbVal;
@@ -201,7 +207,7 @@ void display(Editor* editor, char** args, int arglen) {
         }
     }
     if (!isConfig) {
-        seteditorMsg(editor, "Unknown colour config", 21);
+        seteditorMsg(editor, "display: Unknown colour config");
         return;
     }
 
@@ -212,7 +218,7 @@ void display(Editor* editor, char** args, int arglen) {
     else {
         int check = checkRgb(editor, &rgbVal, args[1]);
         if (!check) {
-            seteditorMsg(editor, "Invalid colour", 14);
+            seteditorMsg(editor, "display: Invalid colour");
             return;
         }
         editor->config.colours[i].isTransparent = false;
@@ -220,11 +226,49 @@ void display(Editor* editor, char** args, int arglen) {
     }
 }
 
+// syntax usage: syntax <colourcode> <regex> (curr)
+// deals with syntax highlighting customization
+void syntax(Editor* editor, char** args, int arglen) {
+    if (args == NULL || (arglen != 2 && arglen != 3)) {
+        seteditorMsg(editor, "syntax: Invalid arguments");
+        return;
+    }
+    Rgb rgbVal;
+    int check = checkRgb(editor, &rgbVal, args[0]);
+    if (!check) {
+        seteditorMsg(editor, "syntax: Invalid colour");
+        return;
+    }
+    
+    // if the 'curr' keyword is present, then we will append a syntax rule to
+    // what currSyntax points to, instead of the last syntax struct in the list
+    if (arglen == 3) {
+        if (strcmp(args[2], "curr") == 0) {
+            editor->currSyntax->map = appendSyntax(editor, editor->currSyntax->map, args[1], rgbVal);
+        }
+        else {
+            seteditorMsg(editor, "syntax: Invalid arguments");
+        }
+        return;
+    }
+    editor->syntaxes[editor->syntaxLen - 1].map = appendSyntax(editor, editor->syntaxes[editor->syntaxLen - 1].map, args[1], rgbVal);
+}
+
+// syntax usage: fileend <regex> (syntaxname)
+// links any file endings with any syntax highlighting files
+void fileend(Editor* editor, char** args, int arglen) {
+    if (args == NULL || arglen != 2) {
+        seteditorMsg(editor, "fileend: Invalid arguments");
+        return;
+    }
+    createSyntax(editor, args[0], args[1]);
+}
+
 // usage: load <file>
 // loads a config file so velte can parse it
 void load(Editor* editor, char** args, int arglen) {
-    if (args == NULL || arglen > 2) {
-        seteditorMsg(editor, "Invalid arguments", 18);
+    if (args == NULL || arglen > 1) {
+        seteditorMsg(editor, "load: Invalid arguments");
         return;
     }
     readConfigFile(editor, args[0]);
@@ -315,28 +359,28 @@ int countTabX(Editor* editor, size_t end, bool countX) {
 
 void tabChange(Editor* editor, int pos) {
     Row* row = &editor->row[pos];
-    free(row->tabs.tab);
+    free(row->tab);
     size_t j = 0;
     int tabcount = getTabCount(editor, pos);
 
     // malloc space for the tab space, tablength is 4 by default
-    row->tabs.tab = check_malloc((row->length + (tabcount * (editor->config.tabcount - 1)) + 1) * sizeof(uint32_t));
+    row->tab = check_malloc((row->length + (tabcount * (editor->config.tabcount - 1)) + 1) * sizeof(uint32_t));
     for (size_t i = 0; i < row->length; i++) {
         // loop through everything; and append a certain amount of spaces
         // if the current char is a tab
         if (isTab(editor, i, pos) == 0) {
             do {
-                row->tabs.tab[j] = ' ';
+                row->tab[j] = ' ';
                 j++;
             }
             while (j % editor->config.tabcount != 0);
             continue;
         }
-        row->tabs.tab[j] = row->str[i];
+        row->tab[j] = row->str[i];
         j++;
     }
-    row->tabs.tab[j] = '\0';
-    row->tabs.tlen = j;
+    row->tab[j] = '\0';
+    row->tlen = j;
 }
 
 int roundXToTabSpace(size_t tabcount, int num) {
@@ -350,7 +394,7 @@ void xUnderDisLine(Editor* editor) {
     
     editor->c.cursorY--;
     Row* row = &editor->row[editor->c.cursorY - 1];
-    editor->c.cursorX = row->tabs.tlen - 1;
+    editor->c.cursorX = row->tlen - 1;
     editor->c.tabX = row->length - 1;
 }
 
@@ -358,7 +402,7 @@ void xUnderDisLine(Editor* editor) {
 void overLine(Editor* editor) {
     Row* row = &editor->row[editor->c.cursorY - 1];
     if (editor->c.cursorY - 1 >= (size_t)editor->linenum - 1) return;
-    if (editor->c.cursorX > row->tabs.tlen - 1) {
+    if (editor->c.cursorX > row->tlen - 1) {
         checkCursorLines(editor, ARROW_DOWN);
         editor->c.cursorX = 0;
         editor->c.tabX = 0;
@@ -371,10 +415,10 @@ void checkCursorLines(Editor* editor, char c) {
 
     // if the cursor is at the end of a line and is moving to a another 
     // line, make sure it always goes to the end of the next/prev line
-    if (editor->c.cursorX == row->tabs.tlen - 1) {
+    if (editor->c.cursorX == row->tlen - 1) {
         c == ARROW_UP ? editor->c.cursorY-- : editor->c.cursorY++;
         row = &editor->row[editor->c.cursorY - 1];
-        editor->c.cursorX = row->tabs.tlen - 1;
+        editor->c.cursorX = row->tlen - 1;
         editor->c.tabX = row->length - 1;
         return;
     }
@@ -383,12 +427,11 @@ void checkCursorLines(Editor* editor, char c) {
         editor->c.cursorX = editor->tabRem;
     }
     c == ARROW_UP ? editor->c.cursorY-- : editor->c.cursorY++;
-
-    row = &editor->row[editor->c.cursorY - 1];
+    c == ARROW_UP ? row-- : row++;
     // make sure that the cursor never goes past the end of the next/prev line, when it is
     // not at the end
-    if (editor->c.cursorX > row->tabs.tlen - 1) {
-        editor->c.cursorX = row->tabs.tlen - 1;
+    if (editor->c.cursorX > row->tlen - 1) {
+        editor->c.cursorX = row->tlen - 1;
         editor->c.tabX = row->length - 1;
     }
 }
@@ -405,7 +448,7 @@ void appendLine(Row* row, uint32_t* s, size_t len) {
 // remove a line, and free all of its components
 void removeLine(int pos, Editor* editor) {
     free(editor->row[pos].str);
-    free(editor->row[pos].tabs.tab);
+    free(editor->row[pos].tab);
     memmove(&editor->row[pos], &editor->row[pos + 1], sizeof(Row) * (editor->linenum - pos - 1));
     editor->linenum--;
 }
@@ -422,7 +465,7 @@ void deleteChar(Editor* editor) {
         if (editor->c.cursorY == 1) return;
  
         editor->c.cursorY--;
-        editor->c.cursorX = editor->row[editor->c.cursorY - 1].tabs.tlen - 1;
+        editor->c.cursorX = editor->row[editor->c.cursorY - 1].tlen - 1;
         editor->c.tabX = editor->row[editor->c.cursorY - 1].length - 1;
 
         // append the line to the previous line, and remove the current line
@@ -457,11 +500,12 @@ void scroll(Editor* editor, Cursor* cursor, uint32_t* str, size_t disLine) {
         cursor->scrollY = cursor->cursorY - 1;
     }
     // we will do the same for horizontal scrolling
+    // the '- 5' would be the offset as we dont want it to go directly next to the end before scrolling
     if (cursor->cursorX + cursor->utfJump + disLine > (size_t)editor->height + cursor->scrollX - 5) {
-        cursor->scrollX = cursor->cursorX + cursor->utfJump - editor->height + disLine + 5;
+        cursor->scrollX = cursor->cursorX + cursor->utfJump + disLine + 5 - editor->height;
     }
     else if (cursor->cursorX + cursor->utfJump < (size_t)cursor->scrollX && cursor->scrollX > 0) {
-        cursor->scrollX = cursor->cursorX + cursor->utfJump;
+            cursor->scrollX = cursor->cursorX + cursor->utfJump;
     }
     // make sure even after changing scrollX does cursorX remain inline with multi-space characters
     cursor->utfJump = 0;
@@ -476,7 +520,7 @@ void processKeypresses(uint32_t character, Editor* editor) {
     if (character != '\0') {
         switch (character) {
             case ESCAPE_KEY: {
-                    seteditorMsg(editor, "", 0);
+                    seteditorMsg(editor, "");
                     char* prompt = editorPrompt(editor, "Enter command: \0");
                     if (prompt != 0) editorCommand(editor, prompt);
                 }
@@ -521,12 +565,15 @@ void processKeypresses(uint32_t character, Editor* editor) {
                 size_t xAfterNL = editor->c.cursorX;
                 int rF = countTabX(editor, editor->c.cursorX, true);
                 checkAheadTab(editor, xBeforeNL, xAfterNL, rF);
+
+                editor->c.scrollX = editor->c.cursorX + editor->c.utfJump + editor->config.disLine + 5 - editor->height;
+                if (editor->c.scrollX < 0) editor->c.scrollX = 0;
                 return;
             }
             case ARROW_RIGHT:
                 // keeping the cursor in boundaries with the line
-                if (editor->c.cursorX >= row->tabs.tlen - 1 && editor->c.cursorY - 1 >= (size_t)editor->linenum - 1) {
-                    editor->c.cursorX = row->tabs.tlen - 1;
+                if (editor->c.cursorX >= row->tlen - 1 && editor->c.cursorY - 1 >= (size_t)editor->linenum - 1) {
+                    editor->c.cursorX = row->tlen - 1;
                     break;
                 }
                 editor->c.tabX++;
@@ -554,5 +601,4 @@ void processKeypresses(uint32_t character, Editor* editor) {
         countTabX(editor, editor->c.tabX, false);
         editor->tabRem = editor->c.cursorX;
     }
-    
 }
