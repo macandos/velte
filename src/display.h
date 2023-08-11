@@ -28,7 +28,7 @@ void errorHandle(const char* err);
 int editorConvStringToSizeT(Editor* editor, size_t* conv, char* str, int base);
 int checkRgb(Editor* editor, Rgb* rgbVal, char* hexValue);
 void highlight(Editor* editor, char* str, size_t length);
-SyntaxMap* appendSyntax(Editor* editor, bool isCurr, char* pattern, Rgb colour);
+SyntaxMap* appendSyntax(Editor* editor, bool isCurr, char* pattern, Rgb colour, bool sub);
 bool isSyntax(Editor* editor, int* outLen, char* str, size_t pos);
 void createSyntax(Editor* editor, char* pattern, char* name);
 int checkExtension(Editor* editor, char* filename);

@@ -234,24 +234,29 @@ void syntax(Editor* editor, char** args, int arglen) {
         return;
     }
     Rgb rgbVal;
+    bool sub = false;
     int check = checkRgb(editor, &rgbVal, args[0]);
     if (!check) {
         seteditorMsg(editor, "syntax: Invalid colour");
         return;
     }
-    
     // if the 'curr' keyword is present, then we will append a syntax rule to
     // what currSyntax points to, instead of the last syntax struct in the list
     if (arglen == 3) {
         if (strcmp(args[2], "curr") == 0) {
-            editor->currSyntax->map = appendSyntax(editor, editor->currSyntax->map, args[1], rgbVal);
+            editor->currSyntax->map = appendSyntax(editor, true, args[1], rgbVal, sub);
+            return;
+        }
+        // should the syntax rule support colouring in any submatches?
+        else if (strcmp(args[2], "sub") == 0) {
+            sub = true;
         }
         else {
             seteditorMsg(editor, "syntax: Invalid arguments");
+            return;
         }
-        return;
     }
-    editor->syntaxes[editor->syntaxLen - 1].map = appendSyntax(editor, editor->syntaxes[editor->syntaxLen - 1].map, args[1], rgbVal);
+    editor->syntaxes[editor->syntaxLen - 1].map = appendSyntax(editor, false, args[1], rgbVal, sub);
 }
 
 // syntax usage: fileend <regex> (syntaxname)

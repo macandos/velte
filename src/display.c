@@ -45,6 +45,7 @@ void getWindowSize(Editor* editor) {
     if (f < 0 || ioctl(f, TIOCGWINSZ, &w) < 0) return;
     editor->width = w.ws_row + 1;
     editor->height = w.ws_col + 1;
+    close(f);
 }
 
 // move the cursor to the required coordinates
@@ -326,12 +327,11 @@ void createSyntax(Editor* editor, char* pattern, char* name) {
         editor->syntaxes[len].syntaxName[strlen(name)] = '\0';
     }
     editor->syntaxLen++;
-
     editor->currSyntax = editor->syntaxes + pos;
 }
 
 // append a new syntax rule
-SyntaxMap* appendSyntax(Editor* editor, bool isCurr, char* pattern, Rgb colour) {
+SyntaxMap* appendSyntax(Editor* editor, bool isCurr, char* pattern, Rgb colour, bool sub) {
     SyntaxMap* map = check_malloc(sizeof(SyntaxMap)), *tmp;
     SyntaxMap* currMap = (isCurr ? editor->currSyntax->map : editor->syntaxes[editor->syntaxLen - 1].map);
     regex_t regexExp;
@@ -346,7 +346,10 @@ SyntaxMap* appendSyntax(Editor* editor, bool isCurr, char* pattern, Rgb colour) 
         seteditorMsg(editor, failBuff);
         return currMap;
     }
-
+    if (sub)
+        colour.sub = true;
+    else
+        colour.sub = false;
     // if the pattern is already in the list, then return  
     HASH_FIND(hh, currMap, &regexExp, sizeof(regex_t), tmp);
     if (tmp) return currMap;
@@ -402,18 +405,25 @@ void highlight(Editor* editor, char* str, size_t length) {
     while (i < length) {
         bool ifStrSyntax = isSyntax(editor, &outLen, &str[i], i);
         if (ifStrSyntax) {
-            tmp = i;
-            while (i < tmp + outLen) {
-                processBG(&editor->a, editor->config.colours[BACKGROUND_COLOUR]);
-                processFG(&editor->a, editor->currMatches[editor->currMatchPos].colour);
-                displayDraw(&editor->a, "%c", str[i]);
-                i++;
+            if (!editor->currMatches[0].colour.sub) {
+                processFG(&editor->a, editor->currMatches[0].colour);
+                writeToAppendBuffer(outLen, &str[i], &editor->a);
+                i += outLen;
+            }
+            else {
+                tmp = i;
+                while (i < tmp + outLen) {
+                    processBG(&editor->a, editor->config.colours[BACKGROUND_COLOUR]);
+                    processFG(&editor->a, editor->currMatches[editor->currMatchPos].colour);
+                    displayDraw(&editor->a, "%c", str[i]);
+                    i++;
 
-                while (editor->currMatchPos > 0 && i >= (size_t)editor->currMatches[editor->currMatchPos].ends.rm_eo) {
-                    editor->currMatchPos--;
+                    while (editor->currMatchPos > 0 && i >= (size_t)editor->currMatches[editor->currMatchPos].ends.rm_eo) {
+                        editor->currMatchPos--;
+                    }
+
+                    isSyntax(editor, &outLen, &str[i], i);
                 }
-
-                isSyntax(editor, &outLen, &str[i], i);
             }
             free(editor->currMatches);
             editor->currMatches = NULL;
