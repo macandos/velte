@@ -1,0 +1,20 @@
+-- Python
+fileend py Python
+
+-- comment
+syntax #3d3d3d #.*
+
+-- basic keywords
+syntax #374b6d (True|False|None|and|or|not|in|is|with|as|pass|from|assert|del|global|nonlocal)
+syntax #8d1690 (if|elif|else|for|while|break|continue|def|class|lambda|return|yield|import|try|except|raise|finally|async|await)
+
+-- functions
+syntax #9eb406 [A-Za-z_]*[[:space:]*]*[\(] sub
+syntax #ffffff \(
+
+-- decorators
+syntax #00dfdf @[A-Za-z0-9_]*
+
+-- strings 
+syntax #804726 "([^"]|\\")*"
+syntax #804726 '([^']|\\')*'

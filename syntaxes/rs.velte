@@ -1,0 +1,16 @@
+-- Rust
+fileend rs Rust
+
+-- keywords
+syntax #374b6d (let|as|extern|false|true|const|mut|pub|self|Self|super|use|where|in|dyn)
+syntax #9d26a0 (break|continue|crate|enum|else|fn|for|if|impl|loop|match|mod|move|ref|return|struct|trait|type|while|unsafe|async|await|macro_rules|union)
+syntax #9eb406 (((i|u)(8|16|32|64|128|size))|(f(32|64))|String|str|'static)
+
+-- functions & macros
+syntax #9eb406 [A-Za-z_]*[[:space:]*]*[\(] sub
+syntax #ee0000 [A-Za-z_]*!
+syntax #ffffff \(
+
+-- strings
+syntax #804726 "([^"]|\\")*"
+syntax #804726 '([^']|\\')*'

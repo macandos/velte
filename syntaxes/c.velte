@@ -1,0 +1,27 @@
+-- C
+fileend ([c|h](pp)?) C
+
+-- comments
+syntax #3d3d3d //.*
+
+-- basic keywords
+syntax #374b6d (int|char|double|bool|float|void|true|false|auto|const|unsigned)
+syntax #9d26a0 (do|for|if|while|struct|enum|else|break|continue|goto|return|union|typedef|enum|virtual|volatile|template|namespace|class|friend|override|private|public|register|using|case)
+
+-- digits
+syntax #ffffbf [0-9]*
+
+-- functions
+syntax #9eb406 [A-Za-z_]*[[:space:]*]*[\(] sub
+syntax #ffffff [()]
+
+-- strings 
+syntax #804726 "([^"]|\\")*"
+syntax #804726 '([^']|\\')*'
+
+-- constants
+syntax #a30000 \<[A-Z_]*\>
+
+-- includes, defines, etc.
+syntax #804726 #include[[:space:]](<([^>]|\\>)*>|"([^"]|\\")*") sub
+syntax #9d26a0 #(define|ifndef|define|ifdef|endif|include)
