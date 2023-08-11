@@ -12,6 +12,7 @@ struct termios term;
 void endRaw() {
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &term) == -1) 
         errorHandle("Velte: tcsetattr");
+    printf("\033c");
 }
 
 // used to read input one-at-a-time, instead of all at one line
