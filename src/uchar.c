@@ -109,9 +109,12 @@ char* utftomb(const uint32_t* str, size_t length, size_t* arrLen) {
 // gets the keypresses from the keyboard and returns a 
 // character containing the keypress
 uint32_t getMKeys() {
+    int n;
     uint32_t character = '\0';
-    if (read(STDIN_FILENO, &character, sizeof(uint32_t)) == -1 && errno != EAGAIN)
-        errorHandle("Velte: read");
+    if ((n = read(STDIN_FILENO, &character, sizeof(uint32_t))) < 1) {
+        if (n == -1 && errno != EAGAIN) errorHandle("Velte: read");
+    }
+    
     // checking for arrow keys
     if (memcmp(&character, "\033[A", 3) == 0)
         character = ARROW_UP;

@@ -14,7 +14,7 @@ void processBG(App* a, Rgb colour) {
 // process foreground colours
 void processFG(App* a, Rgb colour) {
     // in this case, just set it to the default (white)
-    if (colour.isTransparent == true) {
+    if (colour.isTransparent) {
         displayDraw(a, "\033[38;2;%d;%d;%dm", 255, 255, 255);
         return;
     }

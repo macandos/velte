@@ -11,17 +11,26 @@
 #include "uchar.h"
 #include "keypresses.h"
 
-void init(char* filename) {
-    Editor editor;
+Editor editor;
 
+void deinit() {
+    endRaw();
+
+    for (int i = 0; i < editor.syntaxLen; i++) {
+        regfree(&editor.syntaxes->fileEndings);
+    }
+    free(editor.syntaxes);
+    free(editor.row);
+}
+
+void init(char* filename) {
     raw();
-    if (strcmp(nl_langinfo(CODESET), "UTF-8") == 0) {
+    atexit(deinit);
+    setlocale(LC_CTYPE, "");
+    if (strncmp(nl_langinfo(CODESET), "UTF-8", 5) == 0) {
         editor.config.isUtf8 = true;
     }
-    setlocale(LC_CTYPE, "");
     getWindowSize(&editor);
-
-    initConfig(&editor);
     openFile(filename, &editor);
     showDisplay(&editor);
 }
