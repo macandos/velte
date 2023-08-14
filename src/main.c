@@ -14,6 +14,7 @@
 Editor editor;
 
 void deinit() {
+    printf("\033c");
     endRaw();
 
     for (int i = 0; i < editor.syntaxLen; i++) {
@@ -33,6 +34,7 @@ void init(char* filename) {
     getWindowSize(&editor);
     openFile(filename, &editor);
     showDisplay(&editor);
+    deinit();
 }
 
 int main(int argc, char* argv[]) {

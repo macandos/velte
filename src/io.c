@@ -23,7 +23,9 @@ char** splitFileIntoLines(char* filename, int* linenums) {
     int fd = open(filename, O_RDONLY);
     char* fileStr = check_malloc(fileLength + 1);
     char* line = NULL;
-    read(fd, fileStr, fileLength);
+    if (read(fd, fileStr, fileLength) < 0) {
+        errorHandle("Velte: read");
+    }
     fileStr[fileLength] = '\0';
     close(fd);
 
@@ -174,8 +176,12 @@ void writeFile(Editor* editor) {
         return;
     }
 
-    ftruncate(fd, rL);
-    write(fd, toWrite, rL);
+    if (ftruncate(fd, rL) < 0) {
+        errorHandle("Velte: ftruncate");
+    }
+    if (write(fd, toWrite, rL) < 0) {
+        errorHandle("Velte: write");
+    }
     close(fd);
     free(totalStr);
     editor->filename = filename;

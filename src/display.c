@@ -164,7 +164,9 @@ int displayDraw(App* a, const char* format, ...) {
 
 // write the buffer out and free the buffer
 void writeDisplay(App* a) {
-    write(STDOUT_FILENO, a->string, a->length);
+    if (write(STDOUT_FILENO, a->string, a->length) < 0) {
+        errorHandle("Velte: write");
+    };
     free(a->string);
     
     a->string = NULL;
@@ -175,71 +177,63 @@ void writeDisplay(App* a) {
 char *editorPrompt(Editor* editor, char* msg) {
     uint32_t* strmsg = NULL;
     char* charMsg = NULL;
-    char* printMsg = NULL;
     size_t len = 0;
-    size_t resultingLen;
-    size_t printMsgLen;
     Cursor cursor;
     initCursor(&cursor);
     cursor.cursorY = editor->width - 2;
 
-    strmsg = check_malloc((len + 1) * sizeof(uint32_t));
-    strmsg[len] = '\0';
-
     while (1) {
         // format the message and set it as the editor message
         size_t spliceLen = len - cursor.scrollX;
-        charMsg = utftomb(&strmsg[cursor.scrollX], spliceLen, &resultingLen);
-        printMsgLen = strlen(msg) + resultingLen + STARTING_SAVE_STR;
-        printMsg = check_malloc(printMsgLen + 1);
-
-        int res = snprintf(printMsg, printMsgLen, "Ctrl-X Cancel - %s%s", msg, charMsg);
-        if (res < 0) break;
-        seteditorMsg(editor, printMsg);
+        charMsg = utftomb(&strmsg[cursor.scrollX], spliceLen, NULL);
+        
+        seteditorMsg(editor, "Ctrl-X Cancel - %s%s", msg, (strmsg == NULL ? " " : charMsg));
         
         // continue to let the display buffer
         bufferDisplay(editor);
         positionCursor(cursor, strlen(msg) + STARTING_SAVE_STR - 1, &editor->a);
         writeDisplay(&editor->a);
-        seteditorMsg(editor, "");
 
         // get a keypress from the user
         uint32_t c = getMKeys();
-        switch (c) {
-            case '\n':
-            case '\r':
-                // return the prompt entered
-                return charMsg;
-            case CTRL_KEY('x'):
-                return 0;
-            case BACKSPACE_KEY: {
-                if (cursor.cursorX > 0) {
-                    size_t prev = cursor.cursorX;
-                    memmove(&strmsg[prev - 1], &strmsg[prev], (len - prev) * sizeof(uint32_t));
-                    cursor.cursorX--;
-                    len--;
+        if (c != '\0') {
+            switch (c) {
+                case '\n':
+                case '\r':
+                    // return the prompt entered
+                    seteditorMsg(editor, "");
+                    return charMsg;
+                case CTRL_KEY('x'):
+                    seteditorMsg(editor, "");
+                    return 0;
+                case BACKSPACE_KEY: {
+                    if (cursor.cursorX > 0) {
+                        size_t prev = cursor.cursorX;
+                        memmove(&strmsg[prev - 1], &strmsg[prev], (len - prev) * sizeof(uint32_t));
+                        cursor.cursorX--;
+                        len--;
+                    }
+                    break;
                 }
-                break;
+                case ARROW_LEFT:
+                    if (cursor.cursorX > 0) cursor.cursorX--;
+                    break;
+                case ARROW_RIGHT:
+                    if (cursor.cursorX < len) cursor.cursorX++;
+                    break;
+                default:
+                    // TODO: put this into the append char function
+                    if (c != '\t') {
+                        strmsg = check_realloc(strmsg, (len + 2) * sizeof(uint32_t));
+                        memmove(&strmsg[cursor.cursorX + 1], &strmsg[cursor.cursorX], (len - cursor.cursorX) * sizeof(uint32_t));
+                        strmsg[cursor.cursorX] = c;
+                        cursor.cursorX++;
+                        len++;
+
+                        strmsg[len] = '\0';
+                    }
+                    break;
             }
-            case ARROW_LEFT:
-                if (cursor.cursorX > 0) cursor.cursorX--;
-                break;
-            case ARROW_RIGHT:
-                if (cursor.cursorX < len) cursor.cursorX++;
-                break;
-            default:
-                // TODO: put this into the append char function
-                if (c != '\0') {
-                    strmsg = check_realloc(strmsg, (len + 2) * sizeof(uint32_t));
-                    memmove(&strmsg[cursor.cursorX + 1], &strmsg[cursor.cursorX], (len - cursor.cursorX) * sizeof(uint32_t));
-                    strmsg[cursor.cursorX] = c;
-                    cursor.cursorX++;
-                    len++;
-
-                    strmsg[len] = '\0';
-                }
-                break;
-
         }
 
         // do the same thing we did with the regular horizontal scrolling
@@ -253,17 +247,26 @@ char *editorPrompt(Editor* editor, char* msg) {
     }
     free(strmsg);
     free(charMsg);
-    free(printMsg);
     return 0;
 }
 
 // set the display message to anything we want
-void seteditorMsg(Editor* editor, char* msg) {
-    size_t length = strlen(msg);
+void seteditorMsg(Editor* editor, const char* format, ...) {
+    va_list ap;
+    va_start(ap, format);
+
+    // get the length of the formatted string
+    int length = vsnprintf(NULL, 0, format, ap);
+    va_end(ap);
+
+    va_start(ap, format);
     editor->msg = check_malloc(length + 1);
-    memcpy(editor->msg, msg, length);
-    editor->msg[length] = '\0';
+    size_t fLen = vsprintf(editor->msg, format, ap);
+
+    editor->msg[fLen] = '\0';
     editor->time = time(NULL);
+
+    va_end(ap);
 }
 
 // display a message to the user
@@ -323,7 +326,7 @@ void createSyntax(Editor* editor, char* pattern, char* name) {
     editor->syntaxes[len].map = NULL;
     editor->syntaxes[len].fileEndings = regExp;
     if (strlen(name) < 32) {
-        strncpy(editor->syntaxes[len].syntaxName, name, strlen(name));
+        memcpy(editor->syntaxes[len].syntaxName, name, strlen(name));
         editor->syntaxes[len].syntaxName[strlen(name)] = '\0';
     }
     editor->syntaxLen++;
@@ -364,7 +367,7 @@ SyntaxMap* appendSyntax(Editor* editor, bool isCurr, char* pattern, Rgb colour, 
 bool isSyntax(Editor* editor, int* outLen, char* str, size_t pos) {
     SyntaxMap* map, *tmp;
     regmatch_t pmatch[1];
-    bool isMatch = false;
+    int isMatch = false;
 
     if (!isSeparator(*(str - 1)) && !isSeparator(*(str))) return false;
 
@@ -372,9 +375,12 @@ bool isSyntax(Editor* editor, int* outLen, char* str, size_t pos) {
     HASH_ITER(hh, editor->currSyntax->map, map, tmp) {
         if (regexec(&map->key, str, 1, pmatch, 0) == 0) {
             int length = pmatch[0].rm_eo - pmatch[0].rm_so;
+            if (length <= 0) continue;
 
-            if (!isSeparator(*(str + length)) && !isSeparator(*(str + length - 1))) continue;
-            if (length <= 0 || (size_t)pmatch[0].rm_so + pos != pos) continue;
+            if (!isSeparator(*(str + length)) && !isSeparator(*(str + length - 1)))
+                continue;
+            if ((size_t)pmatch[0].rm_so + pos != pos)
+                continue;
 
             if (editor->matchLen == 0) {
                 *outLen = length;
@@ -387,11 +393,20 @@ bool isSyntax(Editor* editor, int* outLen, char* str, size_t pos) {
 
                 editor->currMatchPos = editor->matchLen;
                 editor->matchLen++;
+                isMatch = true;
             }
-            isMatch = true;
         }
     }
     return isMatch;
+}
+
+int printMultibyteChar(Editor* editor, char* str) {
+    if (!editor->config.isUtf8 || *str == '\0') return 1;
+    int len;
+    
+    if ((len = mblen(str, MB_CUR_MAX)) < 0) return 1;
+    writeToAppendBuffer(len, str, &editor->a);
+    return len;
 }
 
 // highlight a string
@@ -415,8 +430,16 @@ void highlight(Editor* editor, char* str, size_t length) {
                 while (i < tmp + outLen) {
                     processBG(&editor->a, editor->config.colours[BACKGROUND_COLOUR]);
                     processFG(&editor->a, editor->currMatches[editor->currMatchPos].colour);
-                    displayDraw(&editor->a, "%c", str[i]);
-                    i++;
+
+                    if (!editor->currMatches[editor->currMatchPos].colour.sub) {
+                        int length = editor->currMatches[editor->currMatchPos].ends.rm_eo - editor->currMatches[editor->currMatchPos].ends.rm_so;
+                        writeToAppendBuffer(length, &str[i], &editor->a);
+                        i += length;
+                    }
+                    else {
+                        int lenChar = printMultibyteChar(editor, &str[i]);
+                        i += lenChar;
+                    }
 
                     while (editor->currMatchPos > 0 && i >= (size_t)editor->currMatches[editor->currMatchPos].ends.rm_eo) {
                         editor->currMatchPos--;
@@ -433,39 +456,36 @@ void highlight(Editor* editor, char* str, size_t length) {
         else {
             reset(&editor->a);
             processBG(&editor->a, editor->config.colours[BACKGROUND_COLOUR]);
-            displayDraw(&editor->a, "%c", str[i]);
-            i++;
+            int lenChar = printMultibyteChar(editor, &str[i]);
+            i += lenChar;
         }
     }
 }
 
 // show linenumbers on the screen
 void lineNumShow(Editor* editor) {
-    // disable default line wrapping
-    displayDraw(&editor->a, "\033[?7l");
     int showLine = 1 + editor->c.scrollY;
     int yPos = 1;
     
     while (yPos < editor->width - 1) {
         int showStrLen = snprintf(0, 0, "%d", showLine);
+        pos(0, yPos, &editor->a);
 
         if (showLine <= editor->linenum) {
             Row* row = &editor->row[showLine - 1];
             if (editor->config.linenums) {
+                if (editor->config.disLine <= showStrLen) editor->config.disLine = showStrLen + 2;
+
                 // draw the line number to the screen
                 // make sure the linenumber is coloured correctly
                 if (editor->c.cursorY == (size_t)showLine)
                     processFG(&editor->a, editor->config.colours[LINENUM_TEXT_ACTIVE_COLOUR]);
                 else 
                     processFG(&editor->a, editor->config.colours[LINENUM_TEXT_COLOUR]);
-    
-                pos(0, yPos, &editor->a);
                 processBG(&editor->a, editor->config.colours[LINENUM_COLOUR]);
-                for (size_t i = 0; i < editor->config.disLine - (showStrLen) - 2; i++) displayDraw(&editor->a, " ");
+                if ((int)editor->config.disLine - (showStrLen) - 2 > 0)
+                    for (size_t i = 0; i < editor->config.disLine - (showStrLen) - 2; i++) displayDraw(&editor->a, " ");
                 displayDraw(&editor->a, "%d ", showLine);
-            }
-            else {
-                pos(0, yPos, &editor->a);
             }
 
             // append the text in
@@ -479,9 +499,6 @@ void lineNumShow(Editor* editor) {
             highlight(editor, toStr, spliceLen);
             free(toStr);
         }
-        else {
-            pos(0, yPos, &editor->a);
-        }
         // coloring in the background
         processBG(&editor->a, editor->config.colours[BACKGROUND_COLOUR]);
         displayDraw(&editor->a, "\033[K");
@@ -494,10 +511,11 @@ void lineNumShow(Editor* editor) {
 
 // buffer 
 void bufferDisplay(Editor* editor) {
-    lineNumShow(editor);
-    getWindowSize(editor);   
+    displayDraw(&editor->a, "\033[?25l");
+    lineNumShow(editor);   
     drawStatusBar(editor);
     systemShowMessage(editor);
+    displayDraw(&editor->a, "\033[?25h");
 }
 
 void initConfig(Editor* editor) {
@@ -547,12 +565,13 @@ void showDisplay(Editor* editor) {
     seteditorMsg(editor, "");
     initCursor(&editor->c);
     initConfig(editor);
+    bufferDisplay(editor);
+    printf("\033c");
 
     while (1) {
         bufferDisplay(editor);
         positionCursor(editor->c, editor->config.disLine, &editor->a);
         writeDisplay(&editor->a);
         controlKeypresses(editor);
-        scroll(editor, &editor->c, editor->row[editor->c.cursorY - 1].str, editor->config.disLine);
     }
 }

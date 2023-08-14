@@ -94,7 +94,7 @@ void editorCommand(Editor* editor, char* command) {
 // syntax usage: gotox <x>
 // changes the x position to the argument
 void gotoX(Editor* editor, char** args, int arglen) {
-    if (args == NULL || arglen >= 2) {
+    if (args == NULL || arglen != 1) {
         seteditorMsg(editor, "gotox: Invalid arguments");
         return;
     }
@@ -112,13 +112,13 @@ void gotoX(Editor* editor, char** args, int arglen) {
     }
     if (by > editor->row[editor->c.cursorY - 1].tlen || !result) return;
     editor->c.cursorX = by;
-    countTabX(editor, editor->c.cursorX, true);
+    countTabX(editor, editor->c.cursorX, false);
 }
 
 // editor usage: gotoy <y>
 // changes the y position to the argument
 void gotoY(Editor* editor, char** args, int arglen) {
-    if (args == NULL || arglen >= 2) {
+    if (args == NULL || arglen != 1) {
         seteditorMsg(editor, "gotoy: Invalid arguments");
         return;
     }
@@ -136,12 +136,19 @@ void gotoY(Editor* editor, char** args, int arglen) {
     }
     if (!result || by > (size_t)editor->linenum) return;
     editor->c.cursorY = by;
+
+    // reposition x if needed
+    if (editor->c.cursorX > editor->row[editor->c.cursorY - 1].length) {
+        editor->c.cursorX = editor->row[editor->c.cursorY - 1].length;
+        countTabX(editor, editor->c.cursorX, false);
+    }
+
 }
 
 // editor usage: config <config> (arguments)
 // change velte's config
 void config(Editor* editor, char** args, int arglen) {
-    if (args == NULL || arglen >= 3) {
+    if (args == NULL || arglen != 2) {
         seteditorMsg(editor, "config: Invalid arguments");
         return;
     }
@@ -379,10 +386,11 @@ void tabChange(Editor* editor, int pos) {
                 j++;
             }
             while (j % editor->config.tabcount != 0);
-            continue;
         }
-        row->tab[j] = row->str[i];
-        j++;
+        else {
+            row->tab[j] = row->str[i];
+            j++;
+        }
     }
     row->tab[j] = '\0';
     row->tlen = j;
@@ -510,7 +518,7 @@ void scroll(Editor* editor, Cursor* cursor, uint32_t* str, size_t disLine) {
         cursor->scrollX = cursor->cursorX + cursor->utfJump + disLine + 5 - editor->height;
     }
     else if (cursor->cursorX + cursor->utfJump < (size_t)cursor->scrollX && cursor->scrollX > 0) {
-            cursor->scrollX = cursor->cursorX + cursor->utfJump;
+        cursor->scrollX = cursor->cursorX + cursor->utfJump;
     }
     // make sure even after changing scrollX does cursorX remain inline with multi-space characters
     cursor->utfJump = 0;
@@ -521,7 +529,6 @@ void scroll(Editor* editor, Cursor* cursor, uint32_t* str, size_t disLine) {
 
 void processKeypresses(uint32_t character, Editor* editor) {
     Row* row = &editor->row[editor->c.cursorY - 1];
-
     if (character != '\0') {
         switch (character) {
             case ESCAPE_KEY: {
@@ -573,6 +580,8 @@ void processKeypresses(uint32_t character, Editor* editor) {
 
                 editor->c.scrollX = editor->c.cursorX + editor->c.utfJump + editor->config.disLine + 5 - editor->height;
                 if (editor->c.scrollX < 0) editor->c.scrollX = 0;
+                scroll(editor, &editor->c, editor->row[editor->c.cursorY - 1].str, editor->config.disLine);
+                bufferDisplay(editor);
                 return;
             }
             case ARROW_RIGHT:
@@ -605,5 +614,6 @@ void processKeypresses(uint32_t character, Editor* editor) {
         }
         countTabX(editor, editor->c.tabX, false);
         editor->tabRem = editor->c.cursorX;
+        scroll(editor, &editor->c, editor->row[editor->c.cursorY - 1].str, editor->config.disLine);
     }
 }

@@ -29,6 +29,7 @@ uint32_t chartouint(const char* str) {
 // converts a multibyte char array into a uint32_t array
 // arrLen is the actual length of the array
 uint32_t* mbtoutf(const char* str, size_t length, size_t* arrLen) {
+    if (str == NULL) return 0;
     const char* ptr = str;
     const char* final = str + length;
     size_t index = 0;
@@ -91,6 +92,7 @@ int isValidUTF(uint32_t character) {
 
 // convert a uint32_t array to a char array
 char* utftomb(const uint32_t* str, size_t length, size_t* arrLen) {
+    if (str == NULL) return 0;
     const uint32_t* ptr = str;
     const uint32_t* final = str + length;
     char* ret = check_malloc((length + 1) * sizeof(uint32_t));
@@ -124,7 +126,7 @@ uint32_t getMKeys() {
         character = ARROW_RIGHT;
     else if (memcmp(&character, "\033[D", 3) == 0)
         character = ARROW_LEFT;
-    else if (!isValidUTF(character)) return 0;
+    else if (!isValidUTF(character)) return '\0';
 
     return character;
 }
@@ -171,7 +173,6 @@ uint32_t utfToCodepoint(const char* in, char chLen) {
 void calculateCharacterWidth(Editor* editor, uint32_t ch, int* utfJump) {
     if (editor->config.isUtf8) {
         if (ch == '\t') return;
-        char* toStr = utftomb(&ch, 1, NULL);
-        *utfJump += getCharWidth(utfToCodepoint(toStr, getLenUTF(ch))) - 1;
+        *utfJump += getCharWidth(utfToCodepoint(utftomb(&ch, 1, NULL), getLenUTF(ch))) - 1;
     }
 }
