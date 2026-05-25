@@ -8,9 +8,7 @@ A basic terminal text editor written in C.
   - [x] Save files to disk
 - [x] Keypresses
 - [x] Status bar
-- [ ] Syntax Highlighting
-- [ ] Word finding
-- [ ] Auto-completion (*very* basic!)
+- [x] Syntax Highlighting
 
 ## Docs
 Documentation is still in development!
