@@ -11,5 +11,4 @@ A basic terminal text editor written in C.
 - [x] Syntax Highlighting
 
 ## Docs
-Documentation is still in development!
-
+See documentation.md for a list of commands.
